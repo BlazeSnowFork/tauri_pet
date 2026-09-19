@@ -1,0 +1,49 @@
+/* 全局样式：透明窗口 + 事件穿透 */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+}
+
+/* 根容器默认不接收鼠标事件，让透明区域把点击透给桌面；
+   宠物、气泡、菜单、设置面板单独恢复 pointer-events */
+.app-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.app-root .pet-wrap,
+.app-root .bubble,
+.app-root .ctx-menu,
+.app-root .settings-mask {
+  pointer-events: auto;
+}
+
+.pet-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+}
+
+.pet-wrap:active {
+  cursor: grabbing;
+}

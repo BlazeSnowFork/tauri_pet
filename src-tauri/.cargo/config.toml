@@ -1,0 +1,13 @@
+# 项目级 crates.io 国内镜像（字节 RsProxy），仅对本项目生效。
+# 如需全局使用，可将本文件内容放到 %USERPROFILE%\.cargo\config.toml
+[source.crates-io]
+replace-with = 'rsproxy-sparse'
+
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+
+[registries.rsproxy]
+index = "sparse+https://rsproxy.cn/index/"
+
+[net]
+git-fetch-with-cli = true

@@ -1,0 +1,225 @@
+/* 宠物外观与状态动画。--speed 由 Pet.vue 注入，控制动画速度倍率 */
+
+.pet {
+  width: 82%;
+  height: 82%;
+  transform-origin: 50% 85%;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.25));
+}
+
+.pet-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.ear,
+.body {
+  fill: #ffd9a3;
+  stroke: #e0a458;
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
+.ear-inner {
+  fill: #ffc4c4;
+}
+
+.eyes circle {
+  fill: #4a3728;
+}
+
+.eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: blink calc(4s / var(--speed)) infinite;
+}
+
+.eyes-closed path {
+  fill: none;
+  stroke: #4a3728;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.mouth {
+  fill: none;
+  stroke: #4a3728;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.mouth-open {
+  fill: #8c5a3c;
+}
+
+.cheek {
+  fill: #ffb6b6;
+  opacity: 0.7;
+}
+
+.zzz text {
+  fill: #7f8cff;
+  font-family: sans-serif;
+  font-weight: bold;
+  opacity: 0;
+  animation: zzz-float calc(2s / var(--speed)) infinite;
+}
+
+.zzz text:nth-of-type(2) {
+  animation-delay: calc(0.3s / var(--speed));
+}
+
+.zzz text:nth-of-type(3) {
+  animation-delay: calc(0.6s / var(--speed));
+}
+
+/* ----- 状态动画 ----- */
+
+.anim-idle {
+  animation: bob calc(3s / var(--speed)) ease-in-out infinite;
+}
+
+.anim-happy {
+  animation: bounce calc(0.9s / var(--speed)) ease-in-out infinite;
+}
+
+.anim-hungry {
+  animation: droop calc(4s / var(--speed)) ease-in-out infinite;
+}
+
+.anim-tired {
+  animation: sway calc(3.5s / var(--speed)) ease-in-out infinite;
+}
+
+.anim-sleep {
+  animation: breathe calc(3s / var(--speed)) ease-in-out infinite;
+}
+
+.anim-eat {
+  animation: munch calc(0.5s / var(--speed)) ease-in-out infinite;
+}
+
+.anim-play {
+  animation: jump calc(0.8s / var(--speed)) ease-in-out infinite;
+}
+
+.anim-pet {
+  animation: wiggle calc(0.6s / var(--speed)) ease-in-out 3;
+}
+
+/* ----- 关键帧 ----- */
+
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+  30% {
+    transform: translateY(-18px) scale(0.95, 1.05);
+  }
+  60% {
+    transform: translateY(0) scale(1.06, 0.94);
+  }
+}
+
+@keyframes droop {
+  0%,
+  100% {
+    transform: translateY(2px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(6px) rotate(-2deg);
+  }
+}
+
+@keyframes sway {
+  0%,
+  100% {
+    transform: rotate(-3deg) translateY(2px);
+  }
+  50% {
+    transform: rotate(3deg) translateY(2px);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04, 0.96);
+  }
+}
+
+@keyframes munch {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(1.05, 0.92);
+  }
+}
+
+@keyframes jump {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-16px) rotate(-6deg);
+  }
+  75% {
+    transform: translateY(-4px) rotate(6deg);
+  }
+}
+
+@keyframes wiggle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-5deg);
+  }
+  75% {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes blink {
+  0%,
+  94%,
+  100% {
+    transform: scaleY(1);
+  }
+  97% {
+    transform: scaleY(0.15);
+  }
+}
+
+@keyframes zzz-float {
+  0% {
+    opacity: 0;
+    transform: translate(0, 6px);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(6px, -10px);
+  }
+}

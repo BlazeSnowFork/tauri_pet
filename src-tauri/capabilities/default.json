@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗口的默认权限：核心 API、拖拽/移动窗口、状态存储、通知与开机自启",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-hide",
+    "store:default",
+    "notification:default",
+    "autostart:default"
+  ]
+}

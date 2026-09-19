@@ -1,0 +1,27 @@
+[package]
+name = "tauri-desktop-pet"
+version = "0.1.0"
+description = "A desktop pet built with Tauri 2"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "tauri_desktop_pet_lib"
+# 桌面项目无需 cdylib（Windows GNU 下 cdylib 全量导出符号会超出 ordinal 上限）
+crate-type = ["staticlib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-store = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true
