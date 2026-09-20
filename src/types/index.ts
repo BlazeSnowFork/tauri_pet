@@ -52,3 +52,12 @@ export interface WindowPosition {
   x: number;
   y: number;
 }
+
+/** 宠物主窗口 → 设置窗口的配置与数值同步载荷 */
+export interface SettingsSyncPayload {
+  settings: PetSettings;
+  stats: PetStats;
+}
+
+/** 屏幕边缘方向：宠物贴边隐藏时记录贴在哪一边 */
+export type ScreenEdge = "left" | "right" | "top" | "bottom";

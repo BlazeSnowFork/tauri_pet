@@ -28,9 +28,7 @@ body {
 }
 
 .app-root .pet-wrap,
-.app-root .bubble,
-.app-root .ctx-menu,
-.app-root .settings-mask {
+.app-root .bubble {
   pointer-events: auto;
 }
 

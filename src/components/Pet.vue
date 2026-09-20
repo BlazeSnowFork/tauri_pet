@@ -30,6 +30,9 @@ function onPointerMove(e: PointerEvent): void {
   if (Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
     dragging = true;
     downPos = null;
+    // 交给系统接管拖拽；不依赖它的返回时机判断拖拽结束，
+    // 结束判定由 store 依据窗口移动事件去抖动得出
+    store.beginDrag();
     void getCurrentWindow().startDragging();
   }
 }
@@ -39,7 +42,16 @@ function onPointerUp(e: PointerEvent): void {
   const wasDragging = dragging;
   downPos = null;
   dragging = false;
-  if (wasDragging) return;
+  if (wasDragging) {
+    store.endDrag();
+    return;
+  }
+
+  // 贴在屏幕边缘时，点击先让宠物完整滑回，不触发随机动作
+  if (store.edgeHidden) {
+    void store.revealFromEdge();
+    return;
+  }
 
   if (clickTimer !== null) {
     // 第二次按下：双击
@@ -57,7 +69,7 @@ function onPointerUp(e: PointerEvent): void {
 
 function onContextMenu(e: MouseEvent): void {
   e.preventDefault();
-  store.openContextMenu(e.clientX, e.clientY);
+  store.openContextMenu();
 }
 
 onUnmounted(() => {

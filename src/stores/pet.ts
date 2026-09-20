@@ -1,10 +1,6 @@
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  getCurrentWindow,
-  LogicalSize,
-  PhysicalPosition,
-} from "@tauri-apps/api/window";
+import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { currentMonitor, getCurrentWindow, PhysicalPosition } from "@tauri-apps/api/window";
 import { disable, enable } from "@tauri-apps/plugin-autostart";
 import {
   isPermissionGranted,
@@ -19,6 +15,8 @@ import type {
   PetAnimation,
   PetSettings,
   PetStats,
+  ScreenEdge,
+  SettingsSyncPayload,
   WindowPosition,
 } from "@/types";
 
@@ -33,8 +31,16 @@ const DECAY_PER_TICK = { hunger: 1, mood: 0.8, energy: 0.6 };
 const LOW_THRESHOLD = 20;
 /** 低状态提醒的冷却时间（毫秒） */
 const WARN_COOLDOWN_MS = 60_000;
-/** 单击/双击区分窗口（毫秒） */
+/** 睡觉持续时间（毫秒） */
 const SLEEP_DURATION_MS = 5_000;
+/** 拖拽结束位置距屏幕边缘小于该值（逻辑像素）时吸附隐藏 */
+const EDGE_SNAP_THRESHOLD = 12;
+/** 窗口停止移动多久后判定拖拽结束（毫秒） */
+const DRAG_END_DEBOUNCE_MS = 400;
+/** 吸附隐藏后仍保留可见的窗口比例 */
+const EDGE_VISIBLE_RATIO = 0.42;
+/** 滑出 / 滑入动画时长（毫秒） */
+const EDGE_ANIM_MS = 200;
 
 export const DEFAULT_STATS: PetStats = { hunger: 80, mood: 80, energy: 80 };
 
@@ -71,6 +77,7 @@ let animTimer: number | null = null;
 let sleepTimer: number | null = null;
 let statsSaveTimer: number | null = null;
 let posSaveTimer: number | null = null;
+let dragEndTimer: number | null = null;
 
 export const usePetStore = defineStore("pet", {
   state: () => ({
@@ -79,12 +86,21 @@ export const usePetStore = defineStore("pet", {
     /** 临时动作动画（吃东西/玩耍/被摸等），结束后回落到基础状态 */
     tempAnimation: null as PetAnimation | null,
     bubble: { visible: false, text: "" },
-    contextMenu: { visible: false, x: 0, y: 0 },
-    settingsOpen: false,
     paused: false,
     sleeping: false,
+    /** 当前贴在哪条屏幕边缘（null 表示未贴边） */
+    edge: null as ScreenEdge | null,
+    /** 是否已部分滑出屏幕 */
+    edgeHidden: false,
+    /** 滑出/滑入动画进行中，避免重入 */
+    sliding: false,
+    /** 是否处于"用户拖拽窗口"过程中 */
+    dragActive: false,
     ready: false,
-    lastWarnAt: {} as Record<"hunger" | "mood" | "energy", number>,
+    lastWarnAt: { hunger: 0, mood: 0, energy: 0 } as Record<
+      "hunger" | "mood" | "energy",
+      number
+    >,
   }),
 
   getters: {
@@ -116,8 +132,8 @@ export const usePetStore = defineStore("pet", {
 
       const win = getCurrentWindow();
       try {
-        await win.setSize(new LogicalSize(this.settings.petSize, this.settings.petSize));
         await win.setAlwaysOnTop(this.settings.alwaysOnTop);
+        await this.applyPetSize(this.settings.petSize);
         if (savedPos) {
           await win.setPosition(new PhysicalPosition(savedPos.x, savedPos.y));
         }
@@ -130,8 +146,22 @@ export const usePetStore = defineStore("pet", {
         await listen("tray://open-settings", () => {
           void this.openSettings();
         }),
+        // 右键菜单与设置面板都在独立窗口里，通过事件与主窗口通信
+        await listen<MenuAction>("menu://action", (event) => {
+          this.handleMenuAction(event.payload);
+        }),
+        await listen("settings://request", () => {
+          void this.emitSettingsSync();
+        }),
+        await listen<PetSettings>("settings://changed", (event) => {
+          void this.applySettings(event.payload);
+        }),
+        await listen("settings://reset-stats", () => {
+          void this.resetStats();
+        }),
         await win.onMoved(({ payload }) => {
           this.scheduleSaveWindowPos({ x: payload.x, y: payload.y });
+          this.noteWindowMoved();
         }),
         await win.onCloseRequested(async (event) => {
           // 点关闭按钮时隐藏到托盘而不是退出
@@ -199,6 +229,8 @@ export const usePetStore = defineStore("pet", {
       this.stats.energy = clamp(this.stats.energy - DECAY_PER_TICK.energy * d);
       this.checkLowWarnings();
       this.saveStatsSoon();
+      // 让设置面板里的数值预览保持最新
+      void this.emitStats();
     },
 
     checkLowWarnings(): void {
@@ -271,6 +303,7 @@ export const usePetStore = defineStore("pet", {
       this.lastWarnAt = { hunger: 0, mood: 0, energy: 0 };
       this.showBubble("焕然一新!");
       await this.saveStats();
+      await this.emitSettingsSync();
     },
 
     // ------------------------------------------------------------------
@@ -294,20 +327,171 @@ export const usePetStore = defineStore("pet", {
     },
 
     // ------------------------------------------------------------------
-    // 右键菜单
+    // 贴边隐藏：拖到屏幕边缘后滑出只留一部分，点击后完整滑回
     // ------------------------------------------------------------------
-    openContextMenu(x: number, y: number): void {
-      this.contextMenu = { visible: true, x, y };
+    /** 用户开始拖拽窗口 */
+    beginDrag(): void {
+      this.dragActive = true;
     },
 
-    closeContextMenu(): void {
-      if (this.contextMenu.visible) {
-        this.contextMenu = { ...this.contextMenu, visible: false };
+    /**
+     * 窗口移动事件驱动：拖拽中且连续一段时间没有新的移动，判定拖拽已结束。
+     * 不依赖 startDragging 的返回时机（各平台语义不一致）。
+     */
+    noteWindowMoved(): void {
+      if (!this.dragActive || this.sliding) return;
+      if (dragEndTimer !== null) clearTimeout(dragEndTimer);
+      dragEndTimer = window.setTimeout(() => {
+        dragEndTimer = null;
+        if (!this.dragActive) return;
+        this.dragActive = false;
+        void this.handleDragEnd();
+      }, DRAG_END_DEBOUNCE_MS);
+    },
+
+    /** 鼠标抬起时兜底（Windows 的模态拖拽不一定回传 pointerup） */
+    endDrag(): void {
+      if (!this.dragActive) return;
+      this.dragActive = false;
+      if (dragEndTimer !== null) {
+        clearTimeout(dragEndTimer);
+        dragEndTimer = null;
+      }
+      void this.handleDragEnd();
+    },
+
+    /** 拖拽结束时调用：靠近屏幕边缘则吸附并部分滑出，否则把宠物拉回屏幕内 */
+    async handleDragEnd(): Promise<void> {
+      if (this.sliding) return;
+      const win = getCurrentWindow();
+      try {
+        // 先校正窗口尺寸：Windows 的 Aero Snap（拖到边缘松手时系统贴靠/最大化）
+        // 会擅自改大窗口，导致按百分比绘制的宠物被放大
+        await this.ensurePetSize();
+
+        const [pos, size, monitor] = await Promise.all([
+          win.outerPosition(),
+          win.outerSize(),
+          currentMonitor(),
+        ]);
+        if (!monitor) return;
+
+        const work = monitor.workArea;
+        const left = work.position.x;
+        const top = work.position.y;
+        const right = left + work.size.width;
+        const bottom = top + work.size.height;
+
+        const gaps: Record<ScreenEdge, number> = {
+          left: pos.x - left,
+          right: right - (pos.x + size.width),
+          top: pos.y - top,
+          bottom: bottom - (pos.y + size.height),
+        };
+        const edge = (Object.keys(gaps) as ScreenEdge[]).reduce((a, b) =>
+          gaps[b] < gaps[a] ? b : a,
+        );
+
+        if (gaps[edge] > EDGE_SNAP_THRESHOLD * monitor.scaleFactor) {
+          // 没有贴到边缘：清除贴边状态，并把窗口收回到可用区域内，
+          // 避免宠物被拖成"半截挂在屏幕外"
+          this.edge = null;
+          this.edgeHidden = false;
+          const clamped = {
+            x: Math.min(Math.max(pos.x, left), right - size.width),
+            y: Math.min(Math.max(pos.y, top), bottom - size.height),
+          };
+          if (clamped.x !== pos.x || clamped.y !== pos.y) {
+            await this.slideTo(clamped, 120);
+          }
+          return;
+        }
+
+        const hiddenX = Math.round(size.width * (1 - EDGE_VISIBLE_RATIO));
+        const hiddenY = Math.round(size.height * (1 - EDGE_VISIBLE_RATIO));
+        const targets: Record<ScreenEdge, { x: number; y: number }> = {
+          left: { x: left - hiddenX, y: pos.y },
+          right: { x: right - size.width + hiddenX, y: pos.y },
+          top: { x: pos.x, y: top - hiddenY },
+          bottom: { x: pos.x, y: bottom - size.height + hiddenY },
+        };
+
+        this.edge = edge;
+        this.edgeHidden = true;
+        await this.slideTo(targets[edge]);
+      } catch (err) {
+        console.warn("贴边隐藏失败:", err);
       }
     },
 
+    /** 点击贴在边缘的宠物：完整滑回屏幕内 */
+    async revealFromEdge(): Promise<void> {
+      if (!this.edge || this.sliding) return;
+      const win = getCurrentWindow();
+      const edge = this.edge;
+      try {
+        const [pos, size, monitor] = await Promise.all([
+          win.outerPosition(),
+          win.outerSize(),
+          currentMonitor(),
+        ]);
+        if (!monitor) return;
+
+        const work = monitor.workArea;
+        const targets: Record<ScreenEdge, { x: number; y: number }> = {
+          left: { x: work.position.x, y: pos.y },
+          right: { x: work.position.x + work.size.width - size.width, y: pos.y },
+          top: { x: pos.x, y: work.position.y },
+          bottom: {
+            x: pos.x,
+            y: work.position.y + work.size.height - size.height,
+          },
+        };
+
+        this.edge = null;
+        this.edgeHidden = false;
+        await this.slideTo(targets[edge]);
+        this.showBubble("我出来啦~", 1500);
+      } catch (err) {
+        console.warn("滑回屏幕失败:", err);
+      }
+    },
+
+    /** 逐帧移动窗口，模拟滑出/滑入动画 */
+    async slideTo(target: { x: number; y: number }, ms = EDGE_ANIM_MS): Promise<void> {
+      const win = getCurrentWindow();
+      this.sliding = true;
+      try {
+        const from = await win.outerPosition();
+        const steps = Math.max(1, Math.round(ms / 16));
+        for (let i = 1; i <= steps; i += 1) {
+          const t = i / steps;
+          const eased = 1 - Math.pow(1 - t, 3);
+          await win.setPosition(
+            new PhysicalPosition(
+              Math.round(from.x + (target.x - from.x) * eased),
+              Math.round(from.y + (target.y - from.y) * eased),
+            ),
+          );
+          if (i < steps) {
+            await new Promise((resolve) => setTimeout(resolve, 16));
+          }
+        }
+      } finally {
+        this.sliding = false;
+      }
+    },
+
+    // ------------------------------------------------------------------
+    // 右键菜单（独立窗口，由 Rust 侧定位并弹出）
+    // ------------------------------------------------------------------
+    openContextMenu(): void {
+      void invoke("show_context_menu").catch((err) => {
+        console.warn("弹出菜单失败:", err);
+      });
+    },
+
     handleMenuAction(action: MenuAction): void {
-      this.closeContextMenu();
       switch (action) {
         case "feed":
           this.feed();
@@ -331,42 +515,48 @@ export const usePetStore = defineStore("pet", {
     },
 
     // ------------------------------------------------------------------
-    // 设置
+    // 设置（独立窗口 + 事件同步）
     // ------------------------------------------------------------------
     async openSettings(): Promise<void> {
-      if (this.settingsOpen) return;
-      this.settingsOpen = true;
-      const win = getCurrentWindow();
       try {
-        await win.show();
-        await win.setFocus();
-        await win.setSize(new LogicalSize(360, 620));
+        await invoke("show_settings_window");
       } catch (err) {
         console.warn("打开设置窗口失败:", err);
+        return;
       }
+      await this.emitSettingsSync();
     },
 
-    async closeSettings(): Promise<void> {
-      if (!this.settingsOpen) return;
-      this.settingsOpen = false;
-      try {
-        await getCurrentWindow().setSize(
-          new LogicalSize(this.settings.petSize, this.settings.petSize),
-        );
-      } catch (err) {
-        console.warn("恢复窗口大小失败:", err);
-      }
-      await this.saveSettings();
+    /** 把当前配置与数值推送给设置窗口 */
+    async emitSettingsSync(): Promise<void> {
+      const payload: SettingsSyncPayload = {
+        settings: JSON.parse(JSON.stringify(this.settings)),
+        stats: JSON.parse(JSON.stringify(this.stats)),
+      };
+      await emit("settings://sync", payload);
     },
 
-    /** 设置面板内任意一项变化后立即生效（窗口大小在关闭面板时应用） */
-    async onSettingsChanged(): Promise<void> {
-      const win = getCurrentWindow();
+    /** 只推送数值（状态衰减时刷新设置面板预览） */
+    async emitStats(): Promise<void> {
+      await emit("settings://stats", JSON.parse(JSON.stringify(this.stats)));
+    },
+
+    /** 设置窗口改动后立即生效 */
+    async applySettings(next: PetSettings): Promise<void> {
+      this.settings = { ...DEFAULT_SETTINGS, ...next };
+
       try {
-        await win.setAlwaysOnTop(this.settings.alwaysOnTop);
+        await getCurrentWindow().setAlwaysOnTop(this.settings.alwaysOnTop);
       } catch (err) {
         console.warn("切换置顶失败:", err);
       }
+
+      try {
+        await this.applyPetSize(this.settings.petSize);
+      } catch (err) {
+        console.warn("调整宠物大小失败:", err);
+      }
+
       try {
         if (this.settings.autostart) {
           await enable();
@@ -376,8 +566,32 @@ export const usePetStore = defineStore("pet", {
       } catch (err) {
         console.warn("切换开机自启失败:", err);
       }
+
       this.startReminder();
       await this.saveSettings();
+    },
+
+    /** 通过 Rust 命令调整宠物窗口尺寸（Windows 下绕开受 shadow 影响的 resize） */
+    async applyPetSize(size: number): Promise<void> {
+      await invoke("set_pet_size", { size });
+    },
+
+    /** 校验窗口尺寸是否仍与设置一致，不一致则改回来 */
+    async ensurePetSize(): Promise<void> {
+      try {
+        const win = getCurrentWindow();
+        const scale = await win.scaleFactor();
+        const expected = Math.round(this.settings.petSize * scale);
+        const outer = await win.outerSize();
+        if (
+          Math.abs(outer.width - expected) > 2 ||
+          Math.abs(outer.height - expected) > 2
+        ) {
+          await this.applyPetSize(this.settings.petSize);
+        }
+      } catch (err) {
+        console.warn("校正宠物尺寸失败:", err);
+      }
     },
 
     // ------------------------------------------------------------------
@@ -429,6 +643,32 @@ export const usePetStore = defineStore("pet", {
     async saveAll(): Promise<void> {
       await this.saveStats();
       await this.saveSettings();
+    },
+
+    /** 注销事件监听与定时器（组件卸载时调用） */
+    dispose(): void {
+      for (const fn of unlistenFns) fn();
+      unlistenFns = [];
+      for (const timer of [
+        decayTimer,
+        reminderTimer,
+        bubbleTimer,
+        animTimer,
+        sleepTimer,
+        statsSaveTimer,
+        posSaveTimer,
+        dragEndTimer,
+      ]) {
+        if (timer !== null) clearTimeout(timer);
+      }
+      decayTimer = null;
+      reminderTimer = null;
+      bubbleTimer = null;
+      animTimer = null;
+      sleepTimer = null;
+      statsSaveTimer = null;
+      posSaveTimer = null;
+      dragEndTimer = null;
     },
   },
 });

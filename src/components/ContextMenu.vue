@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import type { MenuItemDef } from "@/types";
+import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 
-import { usePetStore } from "@/stores/pet";
-
-const store = usePetStore();
+import type { MenuAction, MenuItemDef } from "@/types";
 
 const items: MenuItemDef[] = [
   { key: "feed", label: "🍖 喂食" },
@@ -13,24 +12,27 @@ const items: MenuItemDef[] = [
   { key: "hide", label: "🙈 隐藏宠物" },
   { key: "quit", label: "🚪 退出", danger: true },
 ];
+
+/** 把选中的动作广播给宠物主窗口，然后关闭菜单窗口 */
+async function choose(action: MenuAction): Promise<void> {
+  await emit("menu://action", action);
+  await invoke("hide_context_menu");
+}
 </script>
 
 <template>
-  <div
-    id="context-menu"
-    class="ctx-menu"
-    :style="{ left: `${store.contextMenu.x}px`, top: `${store.contextMenu.y}px` }"
-    @contextmenu.prevent
-  >
-    <button
-      v-for="item in items"
-      :key="item.key"
-      type="button"
-      class="ctx-item"
-      :class="{ danger: item.danger }"
-      @click.stop="store.handleMenuAction(item.key)"
-    >
-      {{ item.label }}
-    </button>
+  <div class="ctx-window">
+    <div class="ctx-menu">
+      <button
+        v-for="item in items"
+        :key="item.key"
+        type="button"
+        class="ctx-item"
+        :class="{ danger: item.danger }"
+        @click="choose(item.key)"
+      >
+        {{ item.label }}
+      </button>
+    </div>
   </div>
 </template>
