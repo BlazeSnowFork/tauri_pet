@@ -1,8 +1,9 @@
 /* 宠物外观与状态动画。--speed 由 Pet.vue 注入，控制动画速度倍率 */
 
 .pet {
-  width: 82%;
-  height: 82%;
+  /* 82% ÷ WINDOW_PAD(1.25)：窗口整体变大，宠物的像素大小保持不变 */
+  width: 65.6%;
+  height: 65.6%;
   transform-origin: 50% 85%;
   filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.25));
 }
@@ -112,6 +113,254 @@
   opacity: 0.55;
 }
 
+/* ----- 毛绒小熊配色（经典泰迪：焦糖绒毛 + 奶油口鼻/脚掌 + 粉蝴蝶结） ----- */
+
+/* 毛绒小熊的绒毛/奶油色由 SVG 内的渐变和毛绒滤镜定义，
+   这里只覆盖需要随状态（眨眼/睡觉/吃饭）切换的部件配色 */
+
+.skin-bear-full .eyes circle {
+  fill: #2e1a11;
+}
+
+.skin-bear-full .eyes .hl {
+  fill: #ffffff;
+}
+
+.skin-bear-full .eyes-closed path,
+.skin-bear-full .mouth {
+  stroke: #2e1a11;
+}
+
+.skin-bear-full .mouth-open {
+  fill: #4a2c1a;
+}
+
+.skin-bear-full .cheek {
+  fill: #f4a2a2;
+  opacity: 0.6;
+}
+
+/* ----- 毛绒小熊专属微动作：耳朵抽动 / 呼吸 / 手臂挥舞 / 重心晃动 / 嘀咕 / 鼻头抽动 -----
+   各动作周期互不成整数倍、并用负延迟错开，避免"齐步"的机械感；
+   大幅动作都藏在长时间的安静段之后，平时只有呼吸和轻微摆臂 */
+
+.skin-bear-full .ears {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: ear-wiggle calc(6.5s / var(--speed)) ease-in-out infinite;
+}
+
+.skin-bear-full .torso {
+  transform-box: fill-box;
+  transform-origin: 50% 92%;
+  animation: teddy-breathe calc(3.2s / var(--speed)) ease-in-out infinite;
+}
+
+.skin-bear-full .arm-l,
+.skin-bear-full .arm-r {
+  transform-box: fill-box;
+  transform-origin: 50% 8%;
+  animation: arm-move calc(9s / var(--speed)) ease-in-out infinite;
+  transition: transform calc(0.45s / var(--speed)) ease;
+}
+
+.skin-bear-full .arm-r {
+  animation-delay: calc(-4.5s / var(--speed));
+}
+
+.skin-bear-full .leg-l,
+.skin-bear-full .leg-r {
+  transform-box: fill-box;
+  transform-origin: 50% 4%;
+  animation: leg-shift calc(8s / var(--speed)) ease-in-out infinite;
+}
+
+.skin-bear-full .leg-r {
+  animation-delay: calc(-4s / var(--speed));
+}
+
+.skin-bear-full .mouth {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+  animation: mouth-mumble calc(7s / var(--speed)) ease-in-out infinite;
+  animation-delay: calc(-3s / var(--speed));
+}
+
+.skin-bear-full .nose {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: nose-twitch calc(5.5s / var(--speed)) ease-in-out infinite;
+  animation-delay: calc(-1.5s / var(--speed));
+}
+
+@keyframes ear-wiggle {
+  0%,
+  70%,
+  100% {
+    transform: rotate(0deg);
+  }
+  76% {
+    transform: rotate(-5deg);
+  }
+  83% {
+    transform: rotate(4deg);
+  }
+  90% {
+    transform: rotate(-2deg);
+  }
+}
+
+@keyframes teddy-breathe {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(0.99, 1.03);
+  }
+}
+
+/* 平时 ±2° 轻摆，约 60% 处突然抬手"挥两下"再落下 */
+@keyframes arm-move {
+  0%,
+  100% {
+    transform: rotate(2deg);
+  }
+  12%,
+  36% {
+    transform: rotate(-2deg);
+  }
+  24%,
+  48% {
+    transform: rotate(2deg);
+  }
+  62% {
+    transform: rotate(-15deg);
+  }
+  70% {
+    transform: rotate(7deg);
+  }
+  78% {
+    transform: rotate(-12deg);
+  }
+  86% {
+    transform: rotate(4deg);
+  }
+  94% {
+    transform: rotate(-1deg);
+  }
+}
+
+/* 站姿重心偶尔换一换 */
+@keyframes leg-shift {
+  0%,
+  62%,
+  100% {
+    transform: rotate(0deg);
+  }
+  70% {
+    transform: rotate(2.5deg);
+  }
+  78% {
+    transform: rotate(-1.2deg);
+  }
+  86% {
+    transform: rotate(1.6deg);
+  }
+  93% {
+    transform: rotate(-0.5deg);
+  }
+}
+
+/* 偶尔自己嘀咕几句：嘴快速开合几下的短爆发 */
+@keyframes mouth-mumble {
+  0%,
+  64%,
+  100% {
+    transform: scaleY(1);
+  }
+  68% {
+    transform: scaleY(0.5);
+  }
+  72% {
+    transform: scaleY(1.2);
+  }
+  76% {
+    transform: scaleY(0.6);
+  }
+  80% {
+    transform: scaleY(1.15);
+  }
+  85% {
+    transform: scaleY(0.8);
+  }
+  90% {
+    transform: scaleY(1);
+  }
+}
+
+/* 鼻头偶尔嗅一嗅：短促的压扁-鼓起 */
+@keyframes nose-twitch {
+  0%,
+  78%,
+  100% {
+    transform: scale(1, 1);
+  }
+  83% {
+    transform: scale(1.14, 0.88);
+  }
+  88% {
+    transform: scale(0.92, 1.1);
+  }
+  93% {
+    transform: scale(1.05, 0.96);
+  }
+}
+
+/* ----- 贴边探头时的撑边手部姿势（仅毛绒小熊有手臂部件，其它皮肤自动无效果）：
+   左右缘：看得见的那只手伸向屏幕边缘撑住；
+   上缘（倒挂）：手臂只是微微外张挂在边缘后，避免小手翻到脸前挡住表情；
+   下缘：两只手向上抬起扒住屏幕边缘线，像趴在围栏上探头。
+   撑边期间停用摆臂动画，回到常态时靠 transition 平滑收回 ----- */
+
+.pet.peek-left .arm-r {
+  animation-name: none;
+  transform: rotate(50deg);
+}
+
+.pet.peek-right .arm-l {
+  animation-name: none;
+  transform: rotate(-50deg);
+}
+
+.pet.peek-top .arm-l,
+.pet.peek-top-left .arm-l,
+.pet.peek-top-right .arm-l {
+  animation-name: none;
+  transform: rotate(25deg);
+}
+
+.pet.peek-top .arm-r,
+.pet.peek-top-left .arm-r,
+.pet.peek-top-right .arm-r {
+  animation-name: none;
+  transform: rotate(-25deg);
+}
+
+.pet.peek-bottom .arm-l,
+.pet.peek-bottom-left .arm-l,
+.pet.peek-bottom-right .arm-l {
+  animation-name: none;
+  transform: translate(2px, -10px) rotate(26deg);
+}
+
+.pet.peek-bottom .arm-r,
+.pet.peek-bottom-left .arm-r,
+.pet.peek-bottom-right .arm-r {
+  animation-name: none;
+  transform: translate(-2px, -10px) rotate(-26deg);
+}
+
 /* ----- 状态动画 ----- */
 
 .anim-idle {
@@ -183,6 +432,164 @@
   animation: idle-squirm calc(3.2s / var(--speed)) ease-in-out infinite;
 }
 
+/* ----- 毛绒小熊专属新动作：挥手 / 拍拍肚 / 踢腿 / 扭扭 -----
+   整体摆动放在 .pet 上，四肢部件动画放在 arm/leg 分组上；
+   小熊以外的皮肤没有这些分组，自动只剩全身摆动部分 */
+
+.idle-wave {
+  animation: idle-wave calc(4.2s / var(--speed)) ease-in-out infinite;
+}
+
+/* 左手举到头侧挥一挥，右手继续自然摆。
+   轴心移到手臂与躯干的连接点(91% 0%)，挥手时肩膀不脱节 */
+.idle-wave .arm-l {
+  transform-origin: 91% 0%;
+  animation: arm-wave calc(1.5s / var(--speed)) ease-in-out infinite;
+}
+
+@keyframes idle-wave {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-3deg) translateY(-1.5%);
+  }
+}
+
+@keyframes arm-wave {
+  0%,
+  100% {
+    transform: rotate(100deg);
+  }
+  25% {
+    transform: rotate(116deg);
+  }
+  55% {
+    transform: rotate(104deg);
+  }
+  75% {
+    transform: rotate(114deg);
+  }
+}
+
+.idle-pat {
+  animation: idle-pat calc(2.6s / var(--speed)) ease-in-out infinite;
+}
+
+/* 两只小手交替轻拍肚皮（同样绕肩点转，手掌不脱离身体） */
+.idle-pat .arm-l {
+  transform-origin: 91% 0%;
+  animation: arm-pat calc(1.3s / var(--speed)) ease-in-out infinite;
+}
+
+.idle-pat .arm-r {
+  transform-origin: 9% 0%;
+  animation: arm-pat calc(1.3s / var(--speed)) ease-in-out infinite;
+  animation-direction: reverse;
+}
+
+@keyframes idle-pat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  25%,
+  75% {
+    transform: translateY(1.2%);
+  }
+  50% {
+    transform: translateY(-1%);
+  }
+}
+
+@keyframes arm-pat {
+  0%,
+  100% {
+    transform: rotate(-14deg);
+  }
+  50% {
+    transform: rotate(-30deg);
+  }
+}
+
+.idle-kick {
+  animation: idle-kick calc(2.2s / var(--speed)) ease-in-out infinite;
+}
+
+/* 两条腿前后交替轻踢，错开半个周期 */
+.idle-kick .leg-l {
+  animation: leg-kick calc(1.1s / var(--speed)) ease-in-out infinite;
+}
+
+.idle-kick .leg-r {
+  animation: leg-kick calc(1.1s / var(--speed)) ease-in-out infinite;
+  animation-delay: calc(-0.55s / var(--speed));
+}
+
+@keyframes idle-kick {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2%);
+  }
+}
+
+@keyframes leg-kick {
+  0%,
+  100% {
+    transform: rotate(4deg);
+  }
+  50% {
+    transform: rotate(-9deg);
+  }
+}
+
+.idle-wiggle {
+  animation: idle-wiggle calc(1.6s / var(--speed)) ease-in-out infinite;
+}
+
+/* 身子扭动时头部和耳朵延迟反摆，营造毛绒晃悠的软趴趴感 */
+.idle-wiggle .pet-svg {
+  animation: wiggle-head-lag calc(1.6s / var(--speed)) ease-in-out infinite;
+}
+
+.idle-wiggle .ears {
+  animation: wiggle-ear-lag calc(1.6s / var(--speed)) ease-in-out infinite;
+}
+
+@keyframes idle-wiggle {
+  0%,
+  100% {
+    transform: rotate(8deg);
+  }
+  50% {
+    transform: rotate(-8deg);
+  }
+}
+
+@keyframes wiggle-head-lag {
+  0%,
+  100% {
+    transform: rotate(-3.5deg);
+  }
+  50% {
+    transform: rotate(3.5deg);
+  }
+}
+
+@keyframes wiggle-ear-lag {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+
 /* ----- 贴边隐藏时的探头张望 -----
    左右贴边：朝桌面可见一侧歪头并轻轻摆看（左缘向右歪、右缘向左歪）；
    上贴边：倒挂在屏幕上方，头对着屏幕内侧；下贴边：藏起身子只露头偷看。
@@ -214,24 +621,24 @@
   animation: peek-bottom calc(3.6s / var(--speed)) ease-in-out infinite;
 }
 
-/* 左缘贴边时向右（桌面侧）歪头，右缘镜像 */
+/* 左缘贴边时向右（桌面侧）歪头，右缘镜像；幅度大一些，突出"探头"感 */
 @keyframes peek-left {
   0%,
   100% {
-    transform: rotate(14deg);
+    transform: rotate(22deg);
   }
   50% {
-    transform: rotate(26deg);
+    transform: rotate(36deg);
   }
 }
 
 @keyframes peek-right {
   0%,
   100% {
-    transform: rotate(-14deg);
+    transform: rotate(-22deg);
   }
   50% {
-    transform: rotate(-26deg);
+    transform: rotate(-36deg);
   }
 }
 
@@ -262,11 +669,11 @@
   }
 }
 
-/* ----- 四角姿态：比单边歪头/倒挂更斜，身体朝角落、头望向桌面内侧 ----- */
+/* ----- 四角姿态：约 45° 斜靠在角落上，绕 45° 上下浮动，头望向桌面内侧 ----- */
 
 .peek-top-left .pet-svg,
 .peek-top-right .pet-svg {
-  transform-origin: 50% 50%;
+  transform-origin: 50% 60%;
   animation-duration: calc(4s / var(--speed));
   animation-timing-function: ease-in-out;
   animation-iteration-count: infinite;
@@ -296,128 +703,52 @@
   animation-name: peek-bottom-right;
 }
 
-/* 上角：斜着倒挂（约 180°±8°），头偏向桌面一侧，轻轻晃 */
+/* 上角：保持倒挂，但整体斜约 45°，头朝向屏幕下方的桌面内侧浮动 */
 @keyframes peek-top-left {
   0%,
   100% {
-    transform: translateY(14%) rotate(165deg);
+    transform: translateY(14%) rotate(131deg);
   }
   50% {
-    transform: translateY(20%) rotate(173deg);
+    transform: translateY(18%) rotate(139deg);
   }
 }
 
 @keyframes peek-top-right {
   0%,
   100% {
-    transform: translateY(14%) rotate(195deg);
+    transform: translateY(14%) rotate(229deg);
   }
   50% {
-    transform: translateY(20%) rotate(187deg);
+    transform: translateY(18%) rotate(221deg);
   }
 }
 
-/* 下角：身子藏在屏幕外，探出眼睛的同时歪头看向桌面内侧 */
+/* 下角：45° 斜倚着底边偷看，浮沉幅度小一些 */
 @keyframes peek-bottom-left {
   0%,
   100% {
-    transform: translateY(-8%) rotate(6deg);
+    transform: translateY(-3%) rotate(41deg);
   }
   50% {
-    transform: translateY(-13%) rotate(14deg);
+    transform: translateY(-7%) rotate(49deg);
   }
 }
 
 @keyframes peek-bottom-right {
   0%,
   100% {
-    transform: translateY(-8%) rotate(-6deg);
+    transform: translateY(-3%) rotate(-41deg);
   }
   50% {
-    transform: translateY(-13%) rotate(-14deg);
+    transform: translateY(-7%) rotate(-49deg);
   }
 }
 
-/* 脱离边缘滑回时的"恢复正向"旋转（按贴边方向区分，下缘不转）：
-   上缘从倒挂状态向右转半圈回正；左右缘按歪头幅度转回并带一点回弹 */
+/* 脱离边缘滑回时不再播放旋转动作（贴边期间只轮换"专注式"小动作）。
+   整幅 SVG 变换（探头/倒挂姿态）的默认轴心： */
 .pet-svg {
   transform-origin: 50% 50%;
-}
-
-.spin-top .pet-svg {
-  transform-origin: 50% 35%;
-  animation: spin-recover-top calc(0.55s / var(--speed)) ease-in-out;
-}
-
-.spin-left .pet-svg {
-  transform-origin: 50% 80%;
-  animation: spin-recover-side calc(0.5s / var(--speed)) cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.spin-right .pet-svg {
-  transform-origin: 50% 80%;
-  animation: spin-recover-side-rev calc(0.5s / var(--speed)) cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-/* 上角滑回：从斜挂姿势转半圈回正；下角同下缘，只平移不转 */
-.spin-top-left .pet-svg,
-.spin-top-right .pet-svg {
-  transform-origin: 50% 35%;
-  animation-duration: calc(0.55s / var(--speed));
-  animation-timing-function: ease-in-out;
-}
-
-.spin-top-left .pet-svg {
-  animation-name: spin-recover-top-left;
-}
-
-.spin-top-right .pet-svg {
-  animation-name: spin-recover-top-right;
-}
-
-@keyframes spin-recover-top-left {
-  from {
-    transform: translateY(14%) rotate(165deg);
-  }
-  to {
-    transform: translateY(0) rotate(360deg);
-  }
-}
-
-@keyframes spin-recover-top-right {
-  from {
-    transform: translateY(14%) rotate(195deg);
-  }
-  to {
-    transform: translateY(0) rotate(360deg);
-  }
-}
-
-@keyframes spin-recover-top {
-  from {
-    transform: translateY(14%) rotate(177deg);
-  }
-  to {
-    transform: translateY(0) rotate(360deg);
-  }
-}
-
-@keyframes spin-recover-side {
-  from {
-    transform: rotate(26deg);
-  }
-  to {
-    transform: rotate(0deg);
-  }
-}
-
-@keyframes spin-recover-side-rev {
-  from {
-    transform: rotate(-26deg);
-  }
-  to {
-    transform: rotate(0deg);
-  }
 }
 
 /* ----- 关键帧 ----- */

@@ -1,5 +1,5 @@
 /** 可选的宠物形象 */
-export type PetSkin = "bear" | "cat";
+export type PetSkin = "bear-full" | "bear" | "cat";
 
 /** 闲置时的小动作变体 */
 export type IdleVariant =
@@ -13,7 +13,11 @@ export type IdleVariant =
   | "spin"
   | "dance"
   | "nod"
-  | "squirm";
+  | "squirm"
+  | "wave"
+  | "pat"
+  | "kick"
+  | "wiggle";
 
 /** 闲置动作模式：fixed 固定轻微起伏，random 随机轮换各种小动作 */
 export type IdleMode = "fixed" | "random";

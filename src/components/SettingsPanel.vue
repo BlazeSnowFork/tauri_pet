@@ -12,6 +12,7 @@ const form = reactive<PetSettings>({ ...DEFAULT_SETTINGS });
 let unlistenSync: UnlistenFn | null = null;
 
 const skins: { key: PetSkin; label: string }[] = [
+  { key: "bear-full", label: "🧸 毛绒小熊" },
   { key: "bear", label: "🐻 小熊" },
   { key: "cat", label: "🐱 小猫" },
 ];

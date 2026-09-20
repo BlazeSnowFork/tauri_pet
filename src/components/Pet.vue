@@ -108,14 +108,122 @@ onUnmounted(() => {
         store.edgeHidden && !store.sliding && store.edge
           ? `peek-${store.corner ?? store.edge}`
           : '',
-        store.spinning && store.spinEdge ? `spin-${store.spinEdge}` : '',
         `skin-${store.settings.petSkin}`,
       ]"
       :style="{ '--speed': store.settings.animationSpeed }"
     >
-      <!-- 棕色小熊 -->
+      <!-- 毛绒小熊：渐变绒毛 + 毛绒滤镜质感，站立泰迪造型（用户提供设计稿） -->
       <svg
-        v-if="store.settings.petSkin === 'bear'"
+        v-if="store.settings.petSkin === 'bear-full'"
+        class="pet-svg"
+        viewBox="0 0 200 200"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <!-- 主体毛绒棕色渐变 -->
+          <radialGradient id="furGrad" cx="40%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#EFCFAA" />
+            <stop offset="50%" stop-color="#DCA877" />
+            <stop offset="100%" stop-color="#B98356" />
+          </radialGradient>
+          <!-- 嘴套/内耳/肚皮的奶油色渐变 -->
+          <radialGradient id="creamGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#FFFFFF" />
+            <stop offset="100%" stop-color="#FCE5D3" />
+          </radialGradient>
+          <!-- 毛绒纹理：深浅交错的短绒毛丝，叠在头部/耳朵上 -->
+          <pattern id="furPattern" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(18)">
+            <path d="M2 1 Q3.5 4.5 2 8" fill="none" stroke="#8a5a30" stroke-width="0.7" opacity="0.28" />
+            <path d="M6.5 0 Q8 3.5 6.5 7" fill="none" stroke="#f7e3c8" stroke-width="0.7" opacity="0.35" />
+            <path d="M4.5 4 Q6 6.5 4.5 9" fill="none" stroke="#a97044" stroke-width="0.6" opacity="0.22" />
+          </pattern>
+          <!-- 毛绒边缘滤镜：模拟绒毛的毛糙质感 -->
+          <filter id="fuzzy" x="-20%" y="-20%" width="140%" height="140%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="3" result="noise" />
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.5" xChannelSelector="R" yChannelSelector="G" />
+          </filter>
+          <filter id="blur" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="4" />
+          </filter>
+        </defs>
+
+        <!-- 底部影子 -->
+        <ellipse cx="100" cy="202" rx="66" ry="11" fill="#000000" opacity="0.18" filter="url(#blur)" />
+
+        <g filter="url(#fuzzy)">
+          <!-- 腿（纯棕色站立，偶尔交换重心） -->
+          <g class="leg-l">
+            <rect x="58" y="146" width="34" height="60" rx="17" fill="url(#furGrad)" />
+          </g>
+          <g class="leg-r">
+            <rect x="108" y="146" width="34" height="60" rx="17" fill="url(#furGrad)" />
+          </g>
+
+          <!-- 躯干组：身体 + 肚皮 + 脖子（呼吸起伏） -->
+          <g class="torso">
+            <ellipse cx="100" cy="136" rx="55" ry="50" fill="url(#furGrad)" />
+            <ellipse cx="100" cy="152" rx="30" ry="28" fill="url(#creamGrad)" opacity="0.95" />
+            <path d="M 82 146 Q 100 166 118 146" fill="none" stroke="#C89468" stroke-width="2" stroke-dasharray="3 3" opacity="0.4" />
+            <path d="M 85 156 Q 100 171 115 156" fill="none" stroke="#C89468" stroke-width="2" stroke-dasharray="3 3" opacity="0.4" />
+            <rect x="82" y="78" width="36" height="30" rx="18" fill="url(#furGrad)" />
+            <path d="M 84 95 Q 100 103 116 95" fill="none" stroke="#A97044" stroke-width="3" stroke-linecap="round" opacity="0.25" />
+          </g>
+
+          <!-- 手臂：从肩部向两侧伸出，像要抱抱（轻摆） -->
+          <g class="arm-l">
+            <path d="M 58 100 Q 36 104 24 124 Q 16 142 24 152 Q 34 158 42 148 Q 52 128 62 115 Z" fill="url(#furGrad)" />
+            <ellipse cx="28" cy="134" rx="3" ry="9" fill="#FFFFFF" opacity="0.3" transform="rotate(30 28 134)" />
+          </g>
+          <g class="arm-r">
+            <path d="M 142 100 Q 164 104 176 124 Q 184 142 176 152 Q 166 158 158 148 Q 148 128 138 115 Z" fill="url(#furGrad)" />
+            <ellipse cx="172" cy="134" rx="3" ry="9" fill="#FFFFFF" opacity="0.3" transform="rotate(-30 172 134)" />
+          </g>
+
+          <!-- 耳朵（会偶尔抽动） -->
+          <g class="ears">
+            <circle cx="48" cy="32" r="26" fill="url(#furGrad)" />
+            <circle cx="48" cy="32" r="26" fill="url(#furPattern)" />
+            <circle cx="48" cy="32" r="15" fill="url(#creamGrad)" />
+            <circle cx="152" cy="32" r="26" fill="url(#furGrad)" />
+            <circle cx="152" cy="32" r="26" fill="url(#furPattern)" />
+            <circle cx="152" cy="32" r="15" fill="url(#creamGrad)" />
+          </g>
+
+          <!-- 头（横向椭圆）+ 奶油嘴套 + 腮红 -->
+          <ellipse cx="100" cy="64" rx="66" ry="61" fill="url(#furGrad)" />
+          <ellipse cx="100" cy="64" rx="66" ry="61" fill="url(#furPattern)" />
+          <ellipse class="muzzle" cx="100" cy="84" rx="30" ry="21" fill="url(#creamGrad)" />
+          <ellipse class="cheek" cx="58" cy="84" rx="11" ry="7.5" />
+          <ellipse class="cheek" cx="142" cy="84" rx="11" ry="7.5" />
+        </g>
+
+        <!-- 面部（不套毛绒滤镜，保持清晰） -->
+        <g v-if="!isSleeping" class="eyes">
+          <circle cx="76" cy="56" r="8.5" />
+          <circle class="hl" cx="73.5" cy="53" r="3.2" />
+          <circle class="hl" cx="78.5" cy="59" r="1.4" />
+          <circle cx="124" cy="56" r="8.5" />
+          <circle class="hl" cx="121.5" cy="53" r="3.2" />
+          <circle class="hl" cx="126.5" cy="59" r="1.4" />
+        </g>
+        <g v-else class="eyes-closed">
+          <path d="M67 56 Q76 64 85 56" />
+          <path d="M115 56 Q124 64 133 56" />
+        </g>
+        <ellipse class="nose" cx="100" cy="74" rx="7.5" ry="5.5" fill="#2E1A11" />
+        <ellipse cx="97.2" cy="72" rx="2.8" ry="1.8" fill="#FFFFFF" opacity="0.6" />
+        <ellipse v-if="isEating" class="mouth-open" cx="100" cy="90" rx="8.5" ry="6.5" />
+        <path v-else class="mouth" d="M 100 81 Q 91 90 86 85 M 100 81 Q 109 90 114 85 M 100 81 L 100 87" />
+        <!-- 睡觉 Zzz -->
+        <g v-if="isSleeping" class="zzz">
+          <text x="168" y="44">z</text>
+          <text x="181" y="30">Z</text>
+          <text x="192" y="17">Z</text>
+        </g>
+      </svg>
+      <!-- 棕色小熊（大头简版） -->
+      <svg
+        v-else-if="store.settings.petSkin === 'bear'"
         class="pet-svg"
         viewBox="0 0 200 200"
         xmlns="http://www.w3.org/2000/svg"

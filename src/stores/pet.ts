@@ -37,14 +37,20 @@ const PROACTIVE_MAX_MS = 100_000;
 const EDGE_SNAP_THRESHOLD = 12;
 /** 距两条边都小于该值（逻辑像素）时判定为卡在屏幕角落 */
 const CORNER_SNAP_TOLERANCE = 40;
+/** 角落吸附时保留可见的窗口比例：45° 斜靠需要比单边更大的露出面积 */
+const CORNER_VISIBLE_RATIO = 0.58;
 /** 窗口停止移动多久后判定拖拽结束（毫秒） */
 const DRAG_END_DEBOUNCE_MS = 400;
 /** 吸附隐藏后仍保留可见的窗口比例 */
 const EDGE_VISIBLE_RATIO = 0.42;
 /** 上缘单独的比例：倒挂探头时吸附深度更浅，露出更多 */
-const EDGE_TOP_VISIBLE_RATIO = 0.55;
+const EDGE_TOP_VISIBLE_RATIO = 0.50;
+/** 下缘单独的比例：底部探头露出多一些，避免静坐/小动作被裁掉 */
+const EDGE_BOTTOM_VISIBLE_RATIO = 0.30;
 /** 滑出 / 滑入动画时长（毫秒） */
 const EDGE_ANIM_MS = 200;
+/** 透明窗口相对宠物可见尺寸的放大系数：给影子、挥手、气泡等留出画外余量 */
+const WINDOW_PAD = 1.25;
 /** 随机模式下两种闲置动作之间的最小 / 最大间隔（毫秒） */
 const IDLE_SWITCH_MIN_MS = 6_000;
 const IDLE_SWITCH_MAX_MS = 13_000;
@@ -61,7 +67,13 @@ const IDLE_VARIANTS: IdleVariant[] = [
   "dance",
   "nod",
   "squirm",
+  "wave",
+  "pat",
+  "kick",
+  "wiggle",
 ];
+/** 贴边时只轮换"专注式"小动作：幅度小、不打扰使用者，且不含旋转 */
+const QUIET_IDLE_VARIANTS: IdleVariant[] = ["bob", "lean", "sway", "nod", "look"];
 /** 连续快速点击达到该次数时触发"被戳晕"彩蛋反应 */
 const COMBO_CLICKS = 3;
 /** 判定连点的相邻点击间隔（毫秒） */
@@ -71,7 +83,7 @@ const FEED_BURST_WINDOW_MS = 30_000;
 const FEED_BURST_LIMIT = 4;
 
 export const DEFAULT_SETTINGS: PetSettings = {
-  petSkin: "bear",
+  petSkin: "bear-full",
   idleMode: "random",
   petSize: 300,
   alwaysOnTop: true,
@@ -167,7 +179,6 @@ let dragEndTimer: number | null = null;
 let idleTimer: number | null = null;
 let proactiveTimer: number | null = null;
 let healthTimer: number | null = null;
-let spinTimer: number | null = null;
 /** 连点判定 */
 let lastClickAt = 0;
 let clickCombo = 0;
@@ -196,10 +207,6 @@ export const usePetStore = defineStore("pet", {
     sliding: false,
     /** 是否处于"用户拖拽窗口"过程中 */
     dragActive: false,
-    /** 脱离边缘滑回时的旋转动作播放中 */
-    spinning: false,
-    /** 播放旋转动作时对应的边缘/角落方向 */
-    spinEdge: null as ScreenEdge | ScreenCorner | null,
     /** 当前闲置动作变体（随机模式下定时轮换） */
     idleVariant: "bob" as IdleVariant,
     ready: false,
@@ -304,7 +311,8 @@ export const usePetStore = defineStore("pet", {
             !this.paused &&
             this.displayAnimation === "idle"
           ) {
-            const pool = IDLE_VARIANTS.filter((v) => v !== this.idleVariant);
+            const base = this.edgeHidden ? QUIET_IDLE_VARIANTS : IDLE_VARIANTS;
+            const pool = base.filter((v) => v !== this.idleVariant);
             this.idleVariant = pool[Math.floor(Math.random() * pool.length)];
           }
           schedule();
@@ -552,22 +560,6 @@ export const usePetStore = defineStore("pet", {
     // ------------------------------------------------------------------
     // 贴边隐藏：拖到屏幕边缘后滑出只留一部分，点击后完整滑回
     // ------------------------------------------------------------------
-    /**
-     * 脱离边缘滑回时播放一次"恢复正向"的旋转：
-     * 上缘/上角倒挂转半圈回正，左右缘按歪头幅度转回，下缘和下角只平移不转。
-     */
-    spinOnce(edge: ScreenEdge | ScreenCorner | null): void {
-      if (!edge || edge === "bottom" || edge.startsWith("bottom")) return;
-      this.spinEdge = edge;
-      this.spinning = true;
-      if (spinTimer !== null) clearTimeout(spinTimer);
-      spinTimer = window.setTimeout(() => {
-        this.spinning = false;
-        this.spinEdge = null;
-        spinTimer = null;
-      }, 650);
-    },
-
     /** 用户开始拖拽窗口 */
     beginDrag(): void {
       this.dragActive = true;
@@ -648,7 +640,6 @@ export const usePetStore = defineStore("pet", {
         if (!edgeSnap && !corner) {
           // 没有贴到边缘：清除贴边状态，并把窗口收回到可用区域内，
           // 避免宠物被拖成"半截挂在屏幕外"
-          if (this.edgeHidden) this.spinOnce(this.corner ?? this.edge);
           this.edge = null;
           this.corner = null;
           this.edgeHidden = false;
@@ -663,27 +654,33 @@ export const usePetStore = defineStore("pet", {
         }
 
         const hiddenX = Math.round(size.width * (1 - EDGE_VISIBLE_RATIO));
-        const hiddenY = Math.round(size.height * (1 - EDGE_VISIBLE_RATIO));
         const hiddenYTop = Math.round(size.height * (1 - EDGE_TOP_VISIBLE_RATIO));
+        const hiddenYBottom = Math.round(size.height * (1 - EDGE_BOTTOM_VISIBLE_RATIO));
         const targets: Record<ScreenEdge, { x: number; y: number }> = {
           left: { x: left - hiddenX, y: pos.y },
           right: { x: right - size.width + hiddenX, y: pos.y },
           top: { x: pos.x, y: top - hiddenYTop },
-          bottom: { x: pos.x, y: bottom - size.height + hiddenY },
+          bottom: { x: pos.x, y: bottom - size.height + hiddenYBottom },
         };
 
         let target = targets[edge];
         if (corner) {
-          // 角落吸附：横向、纵向两个方向的偏移叠加
+          // 角落吸附：横向、纵向偏移叠加，且用更大的露出比例配合 45° 斜靠姿态
+          const hiddenCX = Math.round(size.width * (1 - CORNER_VISIBLE_RATIO));
+          const hiddenCY = Math.round(size.height * (1 - CORNER_VISIBLE_RATIO));
           target = {
-            x: corner.endsWith("left") ? targets.left.x : targets.right.x,
-            y: corner.startsWith("top") ? targets.top.y : targets.bottom.y,
+            x: corner.endsWith("left") ? left - hiddenCX : right - size.width + hiddenCX,
+            y: corner.startsWith("top") ? top - hiddenCY : bottom - size.height + hiddenCY,
           };
         }
 
         this.edge = edge;
         this.corner = corner;
         this.edgeHidden = true;
+        // 吸附到边缘后立刻切回"专注式"小动作，避免大幅动作（旋转/跳舞等）挂在屏外
+        if (!QUIET_IDLE_VARIANTS.includes(this.idleVariant)) {
+          this.idleVariant = "bob";
+        }
         await this.slideTo(target);
       } catch (err) {
         console.warn("贴边隐藏失败:", err);
@@ -731,7 +728,6 @@ export const usePetStore = defineStore("pet", {
         this.edge = null;
         this.corner = null;
         this.edgeHidden = false;
-        this.spinOnce(corner ?? edge);
         await this.slideTo(target);
         this.showBubble("我出来啦~", 1500);
       } catch (err) {
@@ -851,7 +847,7 @@ export const usePetStore = defineStore("pet", {
 
     /** 通过 Rust 命令调整宠物窗口尺寸（Windows 下绕开受 shadow 影响的 resize） */
     async applyPetSize(size: number): Promise<void> {
-      await invoke("set_pet_size", { size });
+      await invoke("set_pet_size", { size: size * WINDOW_PAD });
     },
 
     /** 校验窗口尺寸是否仍与设置一致，不一致则改回来 */
@@ -859,7 +855,7 @@ export const usePetStore = defineStore("pet", {
       try {
         const win = getCurrentWindow();
         const scale = await win.scaleFactor();
-        const expected = Math.round(this.settings.petSize * scale);
+        const expected = Math.round(this.settings.petSize * WINDOW_PAD * scale);
         const outer = await win.outerSize();
         if (
           Math.abs(outer.width - expected) > 2 ||
@@ -922,7 +918,6 @@ export const usePetStore = defineStore("pet", {
         idleTimer,
         proactiveTimer,
         healthTimer,
-        spinTimer,
       ]) {
         if (timer !== null) clearTimeout(timer);
       }
@@ -935,7 +930,6 @@ export const usePetStore = defineStore("pet", {
       idleTimer = null;
       proactiveTimer = null;
       healthTimer = null;
-      spinTimer = null;
     },
   },
 });
