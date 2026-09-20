@@ -184,6 +184,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+.hint.left {
+  min-width: 0;
+  text-align: left;
+}
+
 .toggle-row input[type="checkbox"] {
   width: 18px;
   height: 18px;

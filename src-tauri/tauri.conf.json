@@ -33,7 +33,7 @@
         "label": "pet-menu",
         "title": "菜单",
         "width": 176,
-        "height": 244,
+        "height": 282,
         "transparent": true,
         "backgroundColor": [0, 0, 0, 0],
         "decorations": false,

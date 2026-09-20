@@ -11,7 +11,14 @@ const SETTINGS_WINDOW: &str = "pet-settings";
 /// 宠物主窗口标签
 const MAIN_WINDOW: &str = "main";
 /// 菜单窗口的逻辑尺寸，需与 ContextMenu.vue / ui.css 保持一致
-const MENU_SIZE: (f64, f64) = (176.0, 244.0);
+const MENU_SIZE: (f64, f64) = (176.0, 282.0);
+
+#[cfg(windows)]
+#[repr(C)]
+struct LASTINPUTINFO {
+    cb_size: u32,
+    dw_time: u32,
+}
 
 #[cfg(windows)]
 #[link(name = "user32")]
@@ -25,6 +32,8 @@ extern "system" {
         cy: i32,
         flags: u32,
     ) -> i32;
+    fn GetLastInputInfo(lpii: *mut LASTINPUTINFO) -> i32;
+    fn GetTickCount64() -> u64;
 }
 
 #[cfg(windows)]
@@ -76,6 +85,31 @@ fn set_pet_size(window: tauri::WebviewWindow, size: f64) -> Result<(), String> {
         window
             .set_size(tauri::LogicalSize::new(size, size))
             .map_err(|e| e.to_string())
+    }
+}
+
+/// 距离最后一次键鼠输入的毫秒数（用于"连续用机休息提醒"）。
+/// 非 Windows 平台返回 0（视为一直活跃）。
+#[tauri::command]
+fn get_idle_ms() -> u64 {
+    #[cfg(windows)]
+    {
+        let mut info = LASTINPUTINFO {
+            cb_size: std::mem::size_of::<LASTINPUTINFO>() as u32,
+            dw_time: 0,
+        };
+        let ok = unsafe { GetLastInputInfo(&mut info) };
+        if ok == 0 {
+            return 0;
+        }
+        // dw_time 与 GetTickCount64 的低 32 位同源，wrap 相减可正确处理回绕
+        let now = (unsafe { GetTickCount64() }) as u32;
+        now.wrapping_sub(info.dw_time) as u64
+    }
+
+    #[cfg(not(windows))]
+    {
+        0
     }
 }
 
@@ -159,6 +193,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             exit_app,
             set_pet_size,
+            get_idle_ms,
             show_context_menu,
             hide_context_menu,
             show_settings_window,

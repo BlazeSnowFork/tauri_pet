@@ -1,20 +1,29 @@
-/** 宠物三项数值状态，取值范围均为 0-100 */
-export interface PetStats {
-  /** 饱食度 */
-  hunger: number;
-  /** 心情 */
-  mood: number;
-  /** 精力 */
-  energy: number;
-}
-
 /** 可选的宠物形象 */
 export type PetSkin = "bear" | "cat";
+
+/** 闲置时的小动作变体 */
+export type IdleVariant =
+  | "bob"
+  | "stretch"
+  | "look"
+  | "hop"
+  | "shake"
+  | "lean"
+  | "sway"
+  | "spin"
+  | "dance"
+  | "nod"
+  | "squirm";
+
+/** 闲置动作模式：fixed 固定轻微起伏，random 随机轮换各种小动作 */
+export type IdleMode = "fixed" | "random";
 
 /** 用户可配置的设置项 */
 export interface PetSettings {
   /** 宠物形象 */
   petSkin: PetSkin;
+  /** 闲置动作模式 */
+  idleMode: IdleMode;
   /** 宠物窗口边长（逻辑像素） */
   petSize: number;
   /** 是否始终置顶 */
@@ -23,27 +32,28 @@ export interface PetSettings {
   autostart: boolean;
   /** 动画速度倍率（0.5 - 2） */
   animationSpeed: number;
-  /** 状态衰减速度倍率（0.5 - 3） */
-  decaySpeed: number;
-  /** 是否开启定时提醒 */
-  reminderEnabled: boolean;
-  /** 定时提醒间隔（分钟） */
-  reminderIntervalMin: number;
+  /** 宠物是否会主动搭话、求互动 */
+  proactiveEnabled: boolean;
+  /** 是否整点报时 */
+  timeReportEnabled: boolean;
+  /** 是否按连续用机时长提醒休息 */
+  breakReminderEnabled: boolean;
+  /** 连续使用电脑多少分钟后提醒休息 */
+  breakAfterMin: number;
 }
 
-/** 宠物动画状态 */
-export type PetAnimation =
-  | "idle"
-  | "happy"
-  | "hungry"
-  | "tired"
-  | "sleep"
-  | "eat"
-  | "play"
-  | "pet";
+/** 宠物动画状态（idle 为基础态，其余为互动触发的临时动作） */
+export type PetAnimation = "idle" | "happy" | "sleep" | "eat" | "play" | "pet";
 
 /** 右键菜单动作 */
-export type MenuAction = "feed" | "play" | "sleep" | "settings" | "hide" | "quit";
+export type MenuAction =
+  | "feed"
+  | "play"
+  | "talk"
+  | "sleep"
+  | "settings"
+  | "hide"
+  | "quit";
 
 /** 菜单项定义 */
 export interface MenuItemDef {
@@ -58,11 +68,12 @@ export interface WindowPosition {
   y: number;
 }
 
-/** 宠物主窗口 → 设置窗口的配置与数值同步载荷 */
-export interface SettingsSyncPayload {
-  settings: PetSettings;
-  stats: PetStats;
-}
-
 /** 屏幕边缘方向：宠物贴边隐藏时记录贴在哪一边 */
 export type ScreenEdge = "left" | "right" | "top" | "bottom";
+
+/** 屏幕四角：宠物同时贴近两条边时记录的角落方向 */
+export type ScreenCorner =
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right";

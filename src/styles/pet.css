@@ -122,14 +122,6 @@
   animation: bounce calc(0.9s / var(--speed)) ease-in-out infinite;
 }
 
-.anim-hungry {
-  animation: droop calc(4s / var(--speed)) ease-in-out infinite;
-}
-
-.anim-tired {
-  animation: sway calc(3.5s / var(--speed)) ease-in-out infinite;
-}
-
 .anim-sleep {
   animation: breathe calc(3s / var(--speed)) ease-in-out infinite;
 }
@@ -144,6 +136,288 @@
 
 .anim-pet {
   animation: wiggle calc(0.6s / var(--speed)) ease-in-out 3;
+}
+
+/* ----- 闲置小动作变体（随机模式下由 store 定时轮换） ----- */
+/* 单类选择器写在 .anim-idle / .anim-happy 之后即可覆盖两者的默认动画；
+   bob 变体不加覆盖规则，保持 idle=轻微起伏、happy=开心蹦跳 */
+
+.idle-stretch {
+  animation: idle-stretch calc(4.5s / var(--speed)) ease-in-out infinite;
+}
+
+.idle-look {
+  animation: idle-look calc(5.5s / var(--speed)) ease-in-out infinite;
+}
+
+.idle-hop {
+  animation: idle-hop calc(3.6s / var(--speed)) ease-in-out infinite;
+}
+
+.idle-shake {
+  animation: idle-shake calc(4s / var(--speed)) ease-in-out infinite;
+}
+
+/* 歪倚与晃悠：复用原来"饿/累"状态的关键帧，作为闲置小动作 */
+.idle-lean {
+  animation: droop calc(5s / var(--speed)) ease-in-out infinite;
+}
+
+.idle-sway {
+  animation: sway calc(4s / var(--speed)) ease-in-out infinite;
+}
+
+.idle-spin {
+  animation: idle-spin calc(5s / var(--speed)) ease-in-out infinite;
+}
+
+.idle-dance {
+  animation: idle-dance calc(2.6s / var(--speed)) ease-in-out infinite;
+}
+
+.idle-nod {
+  animation: idle-nod calc(3.4s / var(--speed)) ease-in-out infinite;
+}
+
+.idle-squirm {
+  animation: idle-squirm calc(3.2s / var(--speed)) ease-in-out infinite;
+}
+
+/* ----- 贴边隐藏时的探头张望 -----
+   左右贴边：朝桌面可见一侧歪头并轻轻摆看（左缘向右歪、右缘向左歪）；
+   上贴边：倒挂在屏幕上方，头对着屏幕内侧；下贴边：藏起身子只露头偷看。
+   作用于内层 svg，与外层 .pet 的浮动/轮换动画互不冲突 */
+
+.peek-left .pet-svg,
+.peek-right .pet-svg {
+  transform-origin: 50% 80%;
+}
+
+.peek-top .pet-svg,
+.peek-bottom .pet-svg {
+  transform-origin: 50% 50%;
+}
+
+.peek-left .pet-svg {
+  animation: peek-left calc(2.8s / var(--speed)) ease-in-out infinite;
+}
+
+.peek-right .pet-svg {
+  animation: peek-right calc(2.8s / var(--speed)) ease-in-out infinite;
+}
+
+.peek-top .pet-svg {
+  animation: peek-top calc(4s / var(--speed)) ease-in-out infinite;
+}
+
+.peek-bottom .pet-svg {
+  animation: peek-bottom calc(3.6s / var(--speed)) ease-in-out infinite;
+}
+
+/* 左缘贴边时向右（桌面侧）歪头，右缘镜像 */
+@keyframes peek-left {
+  0%,
+  100% {
+    transform: rotate(14deg);
+  }
+  50% {
+    transform: rotate(26deg);
+  }
+}
+
+@keyframes peek-right {
+  0%,
+  100% {
+    transform: rotate(-14deg);
+  }
+  50% {
+    transform: rotate(-26deg);
+  }
+}
+
+/* 上缘：倒挂 180° 并整体下移，让眼睛刚好探出可见线，轻轻晃；
+   下缘：身子沉到屏幕底边后面，上移到只露出眼睛偷看，探探缩缩 */
+@keyframes peek-top {
+  0%,
+  100% {
+    transform: translateY(14%) rotate(177deg);
+  }
+  50% {
+    transform: translateY(21%) rotate(183deg);
+  }
+}
+
+@keyframes peek-bottom {
+  0%,
+  35%,
+  100% {
+    transform: translateY(-8%);
+  }
+  55%,
+  85% {
+    transform: translateY(-13%);
+  }
+  68% {
+    transform: translateY(-11%);
+  }
+}
+
+/* ----- 四角姿态：比单边歪头/倒挂更斜，身体朝角落、头望向桌面内侧 ----- */
+
+.peek-top-left .pet-svg,
+.peek-top-right .pet-svg {
+  transform-origin: 50% 50%;
+  animation-duration: calc(4s / var(--speed));
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+.peek-bottom-left .pet-svg,
+.peek-bottom-right .pet-svg {
+  transform-origin: 50% 80%;
+  animation-duration: calc(3.6s / var(--speed));
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+.peek-top-left .pet-svg {
+  animation-name: peek-top-left;
+}
+
+.peek-top-right .pet-svg {
+  animation-name: peek-top-right;
+}
+
+.peek-bottom-left .pet-svg {
+  animation-name: peek-bottom-left;
+}
+
+.peek-bottom-right .pet-svg {
+  animation-name: peek-bottom-right;
+}
+
+/* 上角：斜着倒挂（约 180°±8°），头偏向桌面一侧，轻轻晃 */
+@keyframes peek-top-left {
+  0%,
+  100% {
+    transform: translateY(14%) rotate(165deg);
+  }
+  50% {
+    transform: translateY(20%) rotate(173deg);
+  }
+}
+
+@keyframes peek-top-right {
+  0%,
+  100% {
+    transform: translateY(14%) rotate(195deg);
+  }
+  50% {
+    transform: translateY(20%) rotate(187deg);
+  }
+}
+
+/* 下角：身子藏在屏幕外，探出眼睛的同时歪头看向桌面内侧 */
+@keyframes peek-bottom-left {
+  0%,
+  100% {
+    transform: translateY(-8%) rotate(6deg);
+  }
+  50% {
+    transform: translateY(-13%) rotate(14deg);
+  }
+}
+
+@keyframes peek-bottom-right {
+  0%,
+  100% {
+    transform: translateY(-8%) rotate(-6deg);
+  }
+  50% {
+    transform: translateY(-13%) rotate(-14deg);
+  }
+}
+
+/* 脱离边缘滑回时的"恢复正向"旋转（按贴边方向区分，下缘不转）：
+   上缘从倒挂状态向右转半圈回正；左右缘按歪头幅度转回并带一点回弹 */
+.pet-svg {
+  transform-origin: 50% 50%;
+}
+
+.spin-top .pet-svg {
+  transform-origin: 50% 35%;
+  animation: spin-recover-top calc(0.55s / var(--speed)) ease-in-out;
+}
+
+.spin-left .pet-svg {
+  transform-origin: 50% 80%;
+  animation: spin-recover-side calc(0.5s / var(--speed)) cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.spin-right .pet-svg {
+  transform-origin: 50% 80%;
+  animation: spin-recover-side-rev calc(0.5s / var(--speed)) cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 上角滑回：从斜挂姿势转半圈回正；下角同下缘，只平移不转 */
+.spin-top-left .pet-svg,
+.spin-top-right .pet-svg {
+  transform-origin: 50% 35%;
+  animation-duration: calc(0.55s / var(--speed));
+  animation-timing-function: ease-in-out;
+}
+
+.spin-top-left .pet-svg {
+  animation-name: spin-recover-top-left;
+}
+
+.spin-top-right .pet-svg {
+  animation-name: spin-recover-top-right;
+}
+
+@keyframes spin-recover-top-left {
+  from {
+    transform: translateY(14%) rotate(165deg);
+  }
+  to {
+    transform: translateY(0) rotate(360deg);
+  }
+}
+
+@keyframes spin-recover-top-right {
+  from {
+    transform: translateY(14%) rotate(195deg);
+  }
+  to {
+    transform: translateY(0) rotate(360deg);
+  }
+}
+
+@keyframes spin-recover-top {
+  from {
+    transform: translateY(14%) rotate(177deg);
+  }
+  to {
+    transform: translateY(0) rotate(360deg);
+  }
+}
+
+@keyframes spin-recover-side {
+  from {
+    transform: rotate(26deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes spin-recover-side-rev {
+  from {
+    transform: rotate(-26deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
 }
 
 /* ----- 关键帧 ----- */
@@ -234,6 +508,157 @@
   }
   75% {
     transform: rotate(5deg);
+  }
+}
+
+@keyframes idle-stretch {
+  0%,
+  45%,
+  100% {
+    transform: scale(1, 1);
+  }
+  12% {
+    transform: scale(1.08, 0.9);
+  }
+  28% {
+    transform: scale(0.93, 1.1);
+  }
+}
+
+@keyframes idle-look {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0deg);
+  }
+  15%,
+  35% {
+    transform: rotate(-10deg);
+  }
+  65%,
+  85% {
+    transform: rotate(10deg);
+  }
+}
+
+@keyframes idle-hop {
+  0%,
+  44%,
+  100% {
+    transform: translateY(0);
+  }
+  14% {
+    transform: translateY(-12px);
+  }
+  26% {
+    transform: translateY(0);
+  }
+  33% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes idle-shake {
+  0%,
+  22%,
+  100% {
+    transform: rotate(0deg);
+  }
+  5% {
+    transform: rotate(7deg);
+  }
+  10% {
+    transform: rotate(-7deg);
+  }
+  15% {
+    transform: rotate(4deg);
+  }
+}
+
+/* 原地转一圈，转完歇一会儿 */
+@keyframes idle-spin {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0deg);
+  }
+  78% {
+    transform: rotate(360deg);
+  }
+  92% {
+    transform: rotate(362deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* 左右蹦跶的舞步 */
+@keyframes idle-dance {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  15% {
+    transform: translateX(-9px) rotate(-8deg);
+  }
+  30% {
+    transform: translateX(0) rotate(0deg);
+  }
+  45% {
+    transform: translateX(9px) rotate(8deg);
+  }
+  60% {
+    transform: translateX(0) rotate(0deg);
+  }
+  70% {
+    transform: translateX(-6px) rotate(-5deg);
+  }
+  80% {
+    transform: translateX(6px) rotate(5deg);
+  }
+}
+
+/* 连续点两下头 */
+@keyframes idle-nod {
+  0%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+  12% {
+    transform: rotate(5deg) translateY(5px);
+  }
+  24% {
+    transform: rotate(0deg) translateY(0);
+  }
+  36% {
+    transform: rotate(5deg) translateY(5px);
+  }
+  48% {
+    transform: rotate(0deg) translateY(0);
+  }
+}
+
+/* 前后扭身子，扭完停住 */
+@keyframes idle-squirm {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1, 1);
+  }
+  10% {
+    transform: rotate(-7deg) scale(1.05, 0.95);
+  }
+  22% {
+    transform: rotate(7deg) scale(0.96, 1.04);
+  }
+  32% {
+    transform: rotate(-5deg) scale(1.04, 0.96);
+  }
+  42% {
+    transform: rotate(4deg) scale(0.98, 1.02);
+  }
+  52% {
+    transform: rotate(0deg) scale(1, 1);
   }
 }
 

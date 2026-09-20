@@ -10,6 +10,9 @@ const DRAG_THRESHOLD_PX = 8;
 
 const store = usePetStore();
 
+/** 只有纯闲置状态才套用随机小动作（睡觉/临时动画期间不轮换） */
+const isIdle = computed(() => store.displayAnimation === "idle");
+
 let downPos: { x: number; y: number } | null = null;
 let dragging = false;
 let clickTimer: number | null = null;
@@ -33,6 +36,7 @@ function onPointerMove(e: PointerEvent): void {
     // 交给系统接管拖拽；不依赖它的返回时机判断拖拽结束，
     // 结束判定由 store 依据窗口移动事件去抖动得出
     store.beginDrag();
+    store.dragStart();
     void getCurrentWindow().startDragging();
   }
 }
@@ -50,6 +54,16 @@ function onPointerUp(e: PointerEvent): void {
   // 贴在屏幕边缘时，点击先让宠物完整滑回，不触发随机动作
   if (store.edgeHidden) {
     void store.revealFromEdge();
+    return;
+  }
+
+  // 睡觉时点击立即叫醒（带起床气），不等单击/双击判定窗口
+  if (store.sleeping) {
+    if (clickTimer !== null) {
+      clearTimeout(clickTimer);
+      clickTimer = null;
+    }
+    store.wakeUp(true);
     return;
   }
 
@@ -80,7 +94,7 @@ onUnmounted(() => {
 <template>
   <div
     class="pet-wrap"
-    title="左键点击/双击，拖拽移动，右键菜单"
+    title="点击互动（连点有彩蛋），拖拽移动，右键菜单"
     @contextmenu="onContextMenu"
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
@@ -88,7 +102,15 @@ onUnmounted(() => {
   >
     <div
       class="pet"
-      :class="[`anim-${store.displayAnimation}`, `skin-${store.settings.petSkin}`]"
+      :class="[
+        `anim-${store.displayAnimation}`,
+        isIdle ? `idle-${store.idleVariant}` : '',
+        store.edgeHidden && !store.sliding && store.edge
+          ? `peek-${store.corner ?? store.edge}`
+          : '',
+        store.spinning && store.spinEdge ? `spin-${store.spinEdge}` : '',
+        `skin-${store.settings.petSkin}`,
+      ]"
       :style="{ '--speed': store.settings.animationSpeed }"
     >
       <!-- 棕色小熊 -->

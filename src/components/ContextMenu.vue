@@ -7,6 +7,7 @@ import type { MenuAction, MenuItemDef } from "@/types";
 const items: MenuItemDef[] = [
   { key: "feed", label: "🍖 喂食" },
   { key: "play", label: "🎾 玩耍" },
+  { key: "talk", label: "💬 说话" },
   { key: "sleep", label: "💤 睡觉" },
   { key: "settings", label: "⚙️ 设置" },
   { key: "hide", label: "🙈 隐藏宠物" },
