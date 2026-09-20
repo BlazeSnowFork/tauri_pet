@@ -45,6 +45,7 @@ const EDGE_ANIM_MS = 200;
 export const DEFAULT_STATS: PetStats = { hunger: 80, mood: 80, energy: 80 };
 
 export const DEFAULT_SETTINGS: PetSettings = {
+  petSkin: "bear",
   petSize: 300,
   alwaysOnTop: true,
   autostart: false,

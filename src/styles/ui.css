@@ -201,6 +201,33 @@
   color: #4a3728;
 }
 
+.skin-options {
+  display: flex;
+  gap: 10px;
+}
+
+.skin-option {
+  flex: 1;
+  padding: 8px 0;
+  border: 2px solid #e0d2b8;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #4a3728;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.skin-option:hover {
+  background: #fff3e0;
+}
+
+.skin-option.active {
+  border-color: #e0a458;
+  background: #fff3e0;
+  font-weight: 600;
+}
+
 .stats-preview {
   display: flex;
   justify-content: space-around;

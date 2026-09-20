@@ -74,6 +74,44 @@
   animation-delay: calc(0.6s / var(--speed));
 }
 
+/* ----- 小熊形象配色（覆盖上方默认的小猫配色） ----- */
+
+.skin-bear .ear,
+.skin-bear .body {
+  fill: #a9713f;
+  stroke: #7c4f26;
+}
+
+.skin-bear .ear-inner {
+  fill: #d9a86c;
+}
+
+.skin-bear .muzzle {
+  fill: #e8c79a;
+}
+
+.skin-bear .nose {
+  fill: #4a2f1b;
+}
+
+.skin-bear .eyes circle {
+  fill: #3a2415;
+}
+
+.skin-bear .eyes-closed path,
+.skin-bear .mouth {
+  stroke: #3a2415;
+}
+
+.skin-bear .mouth-open {
+  fill: #5c3a22;
+}
+
+.skin-bear .cheek {
+  fill: #e0805a;
+  opacity: 0.55;
+}
+
 /* ----- 状态动画 ----- */
 
 .anim-idle {

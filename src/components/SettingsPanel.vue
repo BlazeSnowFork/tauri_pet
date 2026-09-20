@@ -4,7 +4,7 @@ import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { onMounted, onUnmounted, reactive, ref } from "vue";
 
 import { DEFAULT_SETTINGS } from "@/stores/pet";
-import type { PetSettings, PetStats, SettingsSyncPayload } from "@/types";
+import type { PetSettings, PetSkin, PetStats, SettingsSyncPayload } from "@/types";
 
 // 本窗口是独立窗口，和宠物主窗口是不同的 JS 上下文，
 // 因此这里维护一份本地副本，通过事件与主窗口双向同步。
@@ -13,9 +13,19 @@ const stats = ref<PetStats>({ hunger: 0, mood: 0, energy: 0 });
 let unlistenSync: UnlistenFn | null = null;
 let unlistenStats: UnlistenFn | null = null;
 
+const skins: { key: PetSkin; label: string }[] = [
+  { key: "bear", label: "🐻 小熊" },
+  { key: "cat", label: "🐱 小猫" },
+];
+
 /** 任何一项改动都推送给宠物主窗口立即生效并持久化 */
 function pushChange(): void {
   void emit("settings://changed", { ...form });
+}
+
+function chooseSkin(skin: PetSkin): void {
+  form.petSkin = skin;
+  pushChange();
 }
 
 function close(): void {
@@ -52,6 +62,22 @@ onUnmounted(() => {
     </div>
 
     <div class="settings-body">
+      <div class="row">
+        <label>宠物形象</label>
+        <div class="skin-options">
+          <button
+            v-for="s in skins"
+            :key="s.key"
+            type="button"
+            class="skin-option"
+            :class="{ active: form.petSkin === s.key }"
+            @click="chooseSkin(s.key)"
+          >
+            {{ s.label }}
+          </button>
+        </div>
+      </div>
+
       <div class="row">
         <label for="pet-size">宠物大小</label>
         <div class="row-control">

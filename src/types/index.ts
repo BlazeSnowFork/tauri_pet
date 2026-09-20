@@ -8,8 +8,13 @@ export interface PetStats {
   energy: number;
 }
 
+/** 可选的宠物形象 */
+export type PetSkin = "bear" | "cat";
+
 /** 用户可配置的设置项 */
 export interface PetSettings {
+  /** 宠物形象 */
+  petSkin: PetSkin;
   /** 宠物窗口边长（逻辑像素） */
   petSize: number;
   /** 是否始终置顶 */

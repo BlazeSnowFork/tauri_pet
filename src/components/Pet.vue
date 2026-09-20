@@ -88,10 +88,50 @@ onUnmounted(() => {
   >
     <div
       class="pet"
-      :class="`anim-${store.displayAnimation}`"
+      :class="[`anim-${store.displayAnimation}`, `skin-${store.settings.petSkin}`]"
       :style="{ '--speed': store.settings.animationSpeed }"
     >
-      <svg class="pet-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <!-- 棕色小熊 -->
+      <svg
+        v-if="store.settings.petSkin === 'bear'"
+        class="pet-svg"
+        viewBox="0 0 200 200"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <!-- 圆耳朵 -->
+        <circle class="ear" cx="54" cy="56" r="26" />
+        <circle class="ear" cx="146" cy="56" r="26" />
+        <circle class="ear-inner" cx="54" cy="56" r="13" />
+        <circle class="ear-inner" cx="146" cy="56" r="13" />
+        <!-- 身体 -->
+        <ellipse class="body" cx="100" cy="122" rx="72" ry="64" />
+        <!-- 口鼻区 -->
+        <ellipse class="muzzle" cx="100" cy="136" rx="28" ry="20" />
+        <!-- 眼睛 -->
+        <g v-if="!isSleeping" class="eyes">
+          <circle cx="76" cy="110" r="7" />
+          <circle cx="124" cy="110" r="7" />
+        </g>
+        <g v-else class="eyes-closed">
+          <path d="M68 110 Q76 117 84 110" />
+          <path d="M116 110 Q124 117 132 110" />
+        </g>
+        <!-- 鼻子 + 嘴 -->
+        <ellipse class="nose" cx="100" cy="127" rx="9" ry="6.5" />
+        <ellipse v-if="isEating" class="mouth-open" cx="100" cy="145" rx="11" ry="8" />
+        <path v-else class="mouth" d="M91 143 Q96 149 101 143 Q106 149 111 143" />
+        <!-- 腮红 -->
+        <ellipse class="cheek" cx="60" cy="128" rx="10" ry="6" />
+        <ellipse class="cheek" cx="140" cy="128" rx="10" ry="6" />
+        <!-- 睡觉 Zzz -->
+        <g v-if="isSleeping" class="zzz">
+          <text x="160" y="52">z</text>
+          <text x="174" y="36">Z</text>
+          <text x="186" y="22">Z</text>
+        </g>
+      </svg>
+      <!-- 小猫 -->
+      <svg v-else class="pet-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
         <!-- 耳朵 -->
         <path class="ear" d="M56 84 L42 28 L94 56 Z" />
         <path class="ear" d="M144 84 L158 28 L106 56 Z" />
