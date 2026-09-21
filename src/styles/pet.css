@@ -767,6 +767,486 @@
   transition: transform 0.25s ease-out;
 }
 
+/* ============================================================
+   动作道具层（声明表见 src/logic/props.ts，仅毛绒小熊渲染）。
+   循环类道具的周期与所属 idle-* 动作关键帧一致：变体切换瞬间
+   两者同时起跑，天然同步。"发射型"粒子（音符/水珠/问号/波浪线）
+   基础透明度为 0，靠动画现身——省电模式下动画停止即整体隐身。
+   ============================================================ */
+
+/* 呼啦圈：前后两条半弧拼成一个椭圆环，dash 反向流动模拟转圈 */
+.hoop {
+  fill: none;
+  stroke: #e8548c;
+  stroke-width: 5.5;
+  stroke-linecap: round;
+  stroke-dasharray: 26 14;
+}
+.hoop-front {
+  animation: hoop-march calc(1.6s / var(--speed)) linear infinite;
+}
+.hoop-back {
+  animation: hoop-march calc(1.6s / var(--speed)) linear infinite reverse;
+}
+@keyframes hoop-march {
+  to {
+    stroke-dashoffset: -40;
+  }
+}
+
+/* 迪斯科光圈（dance）：脚下彩盘随心跳缩放 */
+.prop-pool {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pool-pulse calc(1.3s / var(--speed)) ease-in-out infinite;
+}
+@keyframes pool-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+/* 音符（dance）：三只错拍从头顶飘出渐隐 */
+.note {
+  font-size: 15px;
+  font-weight: bold;
+  opacity: 0;
+  animation: note-float calc(2.6s / var(--speed)) ease-out infinite;
+}
+.note.n1 {
+  fill: #e8548c;
+}
+.note.n2 {
+  fill: #5b84c8;
+  animation-delay: calc(-0.9s / var(--speed));
+}
+.note.n3 {
+  fill: #2bae66;
+  animation-delay: calc(-1.7s / var(--speed));
+}
+@keyframes note-float {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(7px, -26px);
+    opacity: 0;
+  }
+}
+
+/* 跳绳（hop）：绕身大圈虚线流动，模拟绳体旋转 */
+/* 跳绳：绳圈绕"两手连线"(y=128) 做立体翻转的 2D 拟真——
+   scaleY 从 -1.6（弧过头顶）经 0（绳在体侧、前视压扁）到 +1（扫过脚下），
+   端点固定在双手所以沿 y=128 缩放不跑位；1.8s 一整圈对应小跳 3.6s 两拍，
+   绳扫到脚下的 50% 相位刚好对上腾空 */
+.prop-rope {
+  transform-origin: 100px 128px;
+  animation: rope-swing calc(1.8s / var(--speed)) ease-in-out infinite;
+}
+@keyframes rope-swing {
+  0% {
+    transform: scaleY(-1.6);
+    opacity: 0.95;
+  }
+  22% {
+    transform: scaleY(0);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 0.95;
+  }
+  78% {
+    transform: scaleY(0);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scaleY(-1.6);
+    opacity: 0.95;
+  }
+}
+.prop-rope path {
+  fill: none;
+  stroke: #ff8a5c;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+}
+
+/* 足球（kick）：随两腿交替踢点弹飞弹回（与 idle-kick 同周期） */
+.prop-ball {
+  animation: ball-kick calc(2.2s / var(--speed)) ease-out infinite;
+}
+@keyframes ball-kick {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  22% {
+    transform: translate(10px, -15px);
+  }
+  45% {
+    transform: translate(16px, 1px);
+  }
+  68% {
+    transform: translate(9px, -8px);
+  }
+  86% {
+    transform: translate(2px, 0);
+  }
+}
+
+/* 舒展波浪线（stretch）：伸懒腰时从头顶冒出渐隐 */
+.tw {
+  fill: none;
+  stroke: #8a5a30;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0;
+  animation: tw-rise calc(4.5s / var(--speed)) ease-out infinite;
+}
+.tw.t2 {
+  animation-delay: calc(0.5s / var(--speed));
+}
+@keyframes tw-rise {
+  0% {
+    transform: translateY(7px);
+    opacity: 0;
+  }
+  22% {
+    opacity: 0.85;
+  }
+  60% {
+    transform: translateY(-9px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(-9px);
+    opacity: 0;
+  }
+}
+
+/* 水珠（shake）：抖动瞬间向各自预设方向飞溅 */
+.drop {
+  fill: #7ec8e3;
+  opacity: 0;
+  animation: drop-splat calc(1s / var(--speed)) ease-out infinite;
+}
+.drop:nth-child(2n) {
+  animation-delay: calc(0.12s / var(--speed));
+}
+.drop:nth-child(3n) {
+  animation-delay: calc(0.22s / var(--speed));
+}
+@keyframes drop-splat {
+  0% {
+    transform: translate(0, 0) scale(0.6);
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx, 0), var(--dy, 0)) scale(1);
+    opacity: 0;
+  }
+}
+
+/* 问号（look）：头顶张望时轻轻弹跳 */
+.prop-q {
+  font-size: 26px;
+  font-weight: bold;
+  fill: #e8548c;
+  opacity: 0;
+  animation: q-bob calc(5.5s / var(--speed)) ease-in-out infinite;
+}
+@keyframes q-bob {
+  0%,
+  100% {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  35% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  65% {
+    transform: translateY(-3px);
+    opacity: 0.9;
+  }
+  85% {
+    opacity: 0;
+  }
+}
+
+/* 蜂蜜罐（eat）：弹跳入场后周期性向嘴倾斜"咕咚"；3s 与 store 进食
+   动画时长一致（两边都除以 --speed，起跑同刻即全程同步） */
+.prop-jar {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: jar-hold calc(3s / var(--speed)) ease-in-out both;
+}
+@keyframes jar-hold {
+  0% {
+    transform: scale(0) rotate(0deg);
+  }
+  14% {
+    transform: scale(1.06) rotate(0deg);
+  }
+  22% {
+    transform: scale(1) rotate(0deg);
+  }
+  38% {
+    transform: rotate(-9deg);
+  }
+  52% {
+    transform: rotate(0deg);
+  }
+  66% {
+    transform: rotate(-8deg);
+  }
+  80% {
+    transform: rotate(0deg);
+  }
+  90% {
+    transform: rotate(-4deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+/* 捧罐的双臂：从垂放收拢到罐两侧（绕肩点转，掌根不脱离身体），
+   14% 处合拢对准罐子弹起，进食期间轻夹、结束随 class 移除松开 */
+.anim-eat .arm-l {
+  transform-box: fill-box;
+  transform-origin: 91% 0%;
+  animation: arm-hold-l calc(3s / var(--speed)) ease-in-out both;
+}
+.anim-eat .arm-r {
+  transform-box: fill-box;
+  transform-origin: 9% 0%;
+  animation: arm-hold-r calc(3s / var(--speed)) ease-in-out both;
+}
+@keyframes arm-hold-l {
+  0% {
+    transform: rotate(0deg);
+  }
+  14% {
+    transform: rotate(-54deg);
+  }
+  50% {
+    transform: rotate(-50deg);
+  }
+  80% {
+    transform: rotate(-54deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+@keyframes arm-hold-r {
+  0% {
+    transform: rotate(0deg);
+  }
+  14% {
+    transform: rotate(58deg);
+  }
+  50% {
+    transform: rotate(54deg);
+  }
+  80% {
+    transform: rotate(58deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+.honey-drip {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+  animation: honey-drip-stretch calc(2s / var(--speed)) ease-in-out infinite;
+}
+@keyframes honey-drip-stretch {
+  0%,
+  100% {
+    transform: scaleY(0.6);
+  }
+  55% {
+    transform: scaleY(1.25);
+  }
+  70% {
+    transform: scaleY(0.9);
+  }
+}
+.honey-drop {
+  opacity: 0;
+  animation: honey-drop-fall calc(2s / var(--speed)) ease-in infinite;
+}
+@keyframes honey-drop-fall {
+  0%,
+  50% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  58% {
+    opacity: 1;
+  }
+  82% {
+    transform: translate(-1px, 16px);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(-1px, 16px);
+    opacity: 0;
+  }
+}
+
+/* 羽毛球（play）：锚点在右拍拍面；playDir=left 时整条弹道经 scaleX(-1)
+   镜像。弹道刻意打到 viewBox 外——.pet-svg 是 overflow:visible，窗口四周
+   有 WINDOW_PAD 的透明衬底，球可以"飞出画面再被打回来"，视口小不再是限制 */
+.shuttle-anchor {
+  transform: translate(191px, 118px);
+}
+.shuttle-anchor.shuttle-mirror {
+  transform: translate(9px, 118px) scaleX(-1);
+}
+.prop-shuttle {
+  animation: shuttle-rally calc(2.3s / var(--speed)) ease-in-out infinite;
+}
+@keyframes shuttle-rally {
+  0% {
+    transform: translate(0, 0) rotate(24deg);
+  }
+  28% {
+    transform: translate(-208px, -96px) rotate(-28deg);
+  }
+  55% {
+    transform: translate(0, -2px) rotate(20deg);
+  }
+  82% {
+    transform: translate(-196px, -66px) rotate(-24deg);
+  }
+  100% {
+    transform: translate(0, 0) rotate(24deg);
+  }
+}
+
+/* 握拍的手臂随两次击球点挥拍（周期与 shuttle-rally 一致，起跑同刻即同步） */
+.anim-play .arm-r {
+  transform-box: fill-box;
+  transform-origin: 9% 0%;
+  animation: racket-swing calc(2.3s / var(--speed)) ease-in-out infinite;
+}
+@keyframes racket-swing {
+  0% {
+    transform: rotate(-20deg);
+  }
+  25% {
+    transform: rotate(12deg);
+  }
+  55% {
+    transform: rotate(-20deg);
+  }
+  78% {
+    transform: rotate(12deg);
+  }
+  100% {
+    transform: rotate(-20deg);
+  }
+}
+
+/* 蝴蝶（小剧本）：双翅高频扇动，沿波浪路径横穿画面后离场 */
+.butterfly {
+  transform-box: fill-box;
+}
+.bf-body-g .wing {
+  transform-box: fill-box;
+  animation: wing-flap calc(0.26s / var(--speed)) ease-in-out infinite;
+}
+.wing-l {
+  transform-origin: 100% 50%;
+}
+.wing-r {
+  transform-origin: 0% 50%;
+}
+@keyframes wing-flap {
+  0%,
+  100% {
+    transform: scaleX(1);
+  }
+  50% {
+    transform: scaleX(0.3);
+  }
+}
+.bf-right .bf-body-g {
+  animation: bf-fly-r calc(6.5s / var(--speed)) ease-in-out both;
+}
+.bf-left .bf-body-g {
+  animation: bf-fly-l calc(6.5s / var(--speed)) ease-in-out both;
+}
+@keyframes bf-fly-r {
+  0% {
+    transform: translate(212px, 110px);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  30% {
+    transform: translate(150px, 58px);
+  }
+  55% {
+    transform: translate(96px, 122px);
+  }
+  80% {
+    transform: translate(44px, 52px);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-18px, 26px);
+    opacity: 0;
+  }
+}
+@keyframes bf-fly-l {
+  0% {
+    transform: translate(-18px, 96px);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  30% {
+    transform: translate(46px, 48px);
+  }
+  55% {
+    transform: translate(100px, 116px);
+  }
+  80% {
+    transform: translate(152px, 56px);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(212px, 24px);
+    opacity: 0;
+  }
+}
+
 /* ----- 性能模式（设置里的"省电模式"）：
    停用四肢/五官微动画与整身投影；毛边滤镜由 Pet.vue 条件卸载。
    保留当前闲置动作的主体动画，宠物依旧会动 ----- */
@@ -782,6 +1262,13 @@
 .perf-lite .torso,
 .perf-lite .mouth,
 .perf-lite .nose {
+  animation: none;
+}
+
+/* 省电模式下循环类道具动画一并停用（粒子基础 opacity:0 自动隐身）；
+   蝴蝶是一次性短动画、开销可忽略，保持完整演出 */
+.perf-lite .prop:not(.butterfly),
+.perf-lite .prop:not(.butterfly) * {
   animation: none;
 }
 
@@ -944,20 +1431,21 @@
   }
 }
 
+/* 两次起跳峰值落在 25%/75%（0.9s、2.7s），与绳圈扫过脚下的相位对齐 */
 @keyframes idle-hop {
   0%,
-  44%,
+  12%,
+  38%,
+  62%,
+  88%,
   100% {
     transform: translateY(0);
   }
-  14% {
+  25% {
     transform: translateY(-12px);
   }
-  26% {
-    transform: translateY(0);
-  }
-  33% {
-    transform: translateY(-5px);
+  75% {
+    transform: translateY(-12px);
   }
 }
 

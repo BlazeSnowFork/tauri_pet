@@ -11,6 +11,7 @@ const SETTINGS_WINDOW: &str = "pet-settings";
 /// 宠物主窗口标签
 const MAIN_WINDOW: &str = "main";
 /// 菜单窗口的逻辑尺寸，需与 ContextMenu.vue / ui.css 保持一致
+/// （"动作演示"页由前端临时 setSize 到 176×420，关闭时还原回此尺寸）
 const MENU_SIZE: (f64, f64) = (176.0, 282.0);
 
 #[cfg(windows)]

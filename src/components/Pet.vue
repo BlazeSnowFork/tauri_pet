@@ -2,6 +2,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { computed, onUnmounted } from "vue";
 
+import { activeProps, type PropKind } from "@/logic/props";
 import { usePetStore } from "@/stores/pet";
 
 /** 单击/双击区分窗口（毫秒），与 store 中的睡眠时长无关 */
@@ -21,6 +22,21 @@ const isSleeping = computed(() => store.displayAnimation === "sleep");
 const isEating = computed(() => store.displayAnimation === "eat");
 /** 性能模式：去掉 feTurbulence 毛边滤镜等常驻 GPU 开销较大的效果 */
 const perfLite = computed(() => store.settings.performanceMode);
+
+/** 当前动作应挂载的道具集合（声明表见 src/logic/props.ts，仅毛绒小熊渲染） */
+const propSet = computed(() => {
+  const kinds = activeProps({
+    displayAnimation: store.displayAnimation,
+    isIdle: isIdle.value,
+    idleVariant: store.idleVariant,
+    butterfly: store.butterflySide !== null,
+  });
+  return new Set<PropKind>(kinds);
+});
+
+function hasProp(kind: PropKind): boolean {
+  return propSet.value.has(kind);
+}
 
 function onPointerDown(e: PointerEvent): void {
   if (e.button !== 0) return;
@@ -161,6 +177,12 @@ onUnmounted(() => {
         <!-- 底部影子 -->
         <ellipse cx="100" cy="202" rx="66" ry="11" fill="#000000" opacity="0.18" filter="url(#blur)" />
 
+        <!-- 迪斯科光圈（dance 道具，压在身子后面） -->
+        <g v-if="hasProp('lightPool')" class="prop prop-pool">
+          <ellipse cx="100" cy="202" rx="86" ry="14" fill="#7C5CFF" opacity="0.32" />
+          <ellipse cx="100" cy="202" rx="64" ry="10" fill="#22C1C3" opacity="0.38" />
+        </g>
+
         <g :filter="perfLite ? undefined : 'url(#fuzzy)'">
           <!-- 腿（纯棕色站立，偶尔交换重心） -->
           <g class="leg-l">
@@ -169,6 +191,13 @@ onUnmounted(() => {
           <g class="leg-r">
             <rect x="108" y="146" width="34" height="60" rx="17" fill="url(#furGrad)" />
           </g>
+
+          <!-- 呼啦圈后半弧：在躯干之前渲染，被肚子挡住形成"围着腰"的遮挡关系 -->
+          <path
+            v-if="hasProp('hoop')"
+            class="prop hoop hoop-back"
+            d="M 34 152 A 66 18 0 0 1 166 152"
+          />
 
           <!-- 躯干组：身体 + 肚皮 + 脖子（呼吸起伏） -->
           <g class="torso">
@@ -188,6 +217,11 @@ onUnmounted(() => {
           <g class="arm-r">
             <path d="M 142 100 Q 164 104 176 124 Q 184 142 176 152 Q 166 158 158 148 Q 148 128 138 115 Z" fill="url(#furGrad)" />
             <ellipse cx="172" cy="134" rx="3" ry="9" fill="#FFFFFF" opacity="0.3" transform="rotate(-30 172 134)" />
+            <!-- 球拍（play 道具）：握在右爪里，随手臂一起动 -->
+            <g v-if="hasProp('racket')" class="prop prop-racket">
+              <line x1="172" y1="144" x2="186" y2="127" stroke="#B98356" stroke-width="4" stroke-linecap="round" />
+              <ellipse cx="191" cy="118" rx="11" ry="13" transform="rotate(-42 191 118)" fill="#F7E3C8" fill-opacity="0.35" stroke="#5B84C8" stroke-width="2.5" />
+            </g>
           </g>
 
           <!-- 耳朵（会偶尔抽动） -->
@@ -225,6 +259,78 @@ onUnmounted(() => {
         <ellipse cx="97.2" cy="72" rx="2.8" ry="1.8" fill="#FFFFFF" opacity="0.6" />
         <ellipse v-if="isEating" class="mouth-open" cx="100" cy="90" rx="8.5" ry="6.5" />
         <path v-else class="mouth" d="M 100 81 Q 91 90 86 85 M 100 81 Q 109 90 114 85 M 100 81 L 100 87" />
+
+        <!-- ── 前置道具层（遮挡上排在身体/面部之前）── -->
+        <!-- 呼啦圈前半弧（与后半弧同一椭圆，dash 流动模拟转圈） -->
+        <path
+          v-if="hasProp('hoop')"
+          class="prop hoop hoop-front"
+          d="M 34 152 A 66 18 0 0 0 166 152"
+        />
+        <!-- 跳绳（hop 道具）：以手部连线为轴的半椭圆绳圈，
+             基线垂在脚下，CSS scaleY 在 -1.6..1 间翻越（端点固定在双手，
+             缩放不跑位；负值翻到头顶即"绳过头顶"那一拍） -->
+        <g v-if="hasProp('rope')" class="prop prop-rope">
+          <path d="M 26 128 C 26 172 62 208 100 208 C 138 208 174 172 174 128" />
+        </g>
+        <!-- 足球（kick 道具）：停在右脚前，被踢飞再弹回 -->
+        <g v-if="hasProp('ball')" class="prop prop-ball">
+          <circle cx="160" cy="194" r="10" fill="#FFFFFF" stroke="#2E1A11" stroke-width="1.5" />
+          <path d="M 160 188.5 L 164.8 192 L 163 197.3 L 157 197.3 L 155.2 192 Z" fill="#2E1A11" />
+        </g>
+        <!-- 音符（dance 道具）：三只错拍飘出 -->
+        <g v-if="hasProp('notes')" class="prop prop-notes">
+          <text class="note n1" x="152" y="34">♪</text>
+          <text class="note n2" x="40" y="44">♫</text>
+          <text class="note n3" x="166" y="56">♪</text>
+        </g>
+        <!-- 舒展波浪线（stretch 道具） -->
+        <g v-if="hasProp('stretchLines')" class="prop prop-stretch">
+          <path class="tw t1" d="M 118 16 Q 126 9 134 16 Q 142 23 150 16" />
+          <path class="tw t2" d="M 48 26 Q 55 20 62 26" />
+        </g>
+        <!-- 水珠（shake 道具）：--dx/--dy 决定飞溅方向 -->
+        <g v-if="hasProp('drops')" class="prop prop-drops">
+          <circle class="drop" style="--dx: -18px; --dy: -10px" cx="52" cy="42" r="2.8" />
+          <circle class="drop" style="--dx: -14px; --dy: 6px" cx="44" cy="70" r="2.4" />
+          <circle class="drop" style="--dx: -6px; --dy: -16px" cx="78" cy="16" r="2.6" />
+          <circle class="drop" style="--dx: 8px; --dy: -16px" cx="122" cy="16" r="2.6" />
+          <circle class="drop" style="--dx: 18px; --dy: -10px" cx="148" cy="42" r="2.8" />
+          <circle class="drop" style="--dx: 14px; --dy: 6px" cx="156" cy="70" r="2.4" />
+        </g>
+        <!-- 问号（look 道具） -->
+        <text v-if="hasProp('question')" class="prop prop-q" x="162" y="36">?</text>
+        <!-- 蜂蜜罐（eat 道具）：双臂随 arm-hold 关键帧收拢捧罐，爪尖搭在罐沿；
+             罐口有蜜汁挂滴、周期坠落（捧持姿态见 pet.css .anim-eat .arm-*） -->
+        <g v-if="hasProp('jar')" class="prop prop-jar">
+          <path d="M 82 138 Q 78 158 84 168 Q 100 175 116 168 Q 122 158 118 138 Z" fill="#E9A83B" stroke="#B97F22" stroke-width="1.5" />
+          <path d="M 88 142 Q 86 154 89 162" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.35" />
+          <ellipse cx="100" cy="153" rx="13" ry="7.5" fill="#FCE5D3" opacity="0.92" />
+          <text x="100" y="156.5" text-anchor="middle" font-size="8.5" font-weight="bold" fill="#B97F22">蜜</text>
+          <path d="M 80 138 L 82 133 Q 100 127 118 133 L 120 138 Q 100 132.5 80 138 Z" fill="#C0392B" stroke="#96281B" stroke-width="1" />
+          <path class="honey-drip" d="M 108 139 Q 111.5 142 110 145.5 Q 107.5 147.5 106 145 Q 105 141.5 108 139 Z" fill="#F0B44B" />
+          <circle class="honey-drop" cx="108" cy="147" r="1.7" fill="#F0B44B" />
+          <!-- 搭在罐沿的爪尖：收拢后的手臂尖正好停在罐两侧，这里补一层"扣住"的手指 -->
+          <circle cx="80.5" cy="151" r="6.2" fill="url(#furGrad)" />
+          <ellipse cx="82.5" cy="152.5" rx="3" ry="2.4" fill="#FCE5D3" opacity="0.8" />
+          <circle cx="119.5" cy="151" r="6.2" fill="url(#furGrad)" />
+          <ellipse cx="117.5" cy="152.5" rx="3" ry="2.4" fill="#FCE5D3" opacity="0.8" />
+        </g>
+        <!-- 羽毛球（play 道具）：朝视线方向（store.playDir）来回对拉 -->
+        <g v-if="hasProp('shuttle')" class="prop shuttle-anchor" :class="store.playDir === 'left' ? 'shuttle-mirror' : ''">
+          <g class="prop-shuttle">
+            <path d="M 0 0 L -6 13 Q 0 9.5 6 13 Z" fill="#F5F0E6" stroke="#C8B79A" stroke-width="1" />
+            <circle cx="0" cy="-2.5" r="4.5" fill="#FFFFFF" stroke="#B98356" stroke-width="1.2" />
+          </g>
+        </g>
+        <!-- 蝴蝶（随机小剧本）：从一侧画翅飞过 -->
+        <g v-if="hasProp('butterfly')" class="prop butterfly" :class="`bf-${store.butterflySide ?? 'right'}`">
+          <g class="bf-body-g">
+            <ellipse class="wing wing-l" cx="-6" cy="0" rx="6.5" ry="8.5" fill="#8FB8FF" />
+            <ellipse class="wing wing-r" cx="6" cy="0" rx="6.5" ry="8.5" fill="#FFB8D2" />
+            <rect x="-1" y="-5.5" width="2" height="11" rx="1" fill="#3A2A1A" />
+          </g>
+        </g>
         <!-- 睡觉 Zzz -->
         <g v-if="isSleeping" class="zzz">
           <text x="168" y="44">z</text>

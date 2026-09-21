@@ -61,9 +61,14 @@ export type MenuAction =
   | "hide"
   | "quit";
 
-/** 菜单项定义 */
+/** 菜单"动作演示"页里可选的单个动作 */
+export type MenuDemo =
+  | { target: "idle"; variant: IdleVariant }
+  | { target: "temp"; anim: "eat" | "play" };
+
+/** 菜单项定义（demo 为本地翻页项，不发给主窗口） */
 export interface MenuItemDef {
-  key: MenuAction;
+  key: MenuAction | "demo";
   label: string;
   danger?: boolean;
 }

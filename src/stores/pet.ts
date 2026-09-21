@@ -30,10 +30,12 @@ import {
   type Size,
 } from "@/logic/edge";
 import { mergeSettings } from "@/logic/settings";
+import { IDLE_VARIANT_LABELS } from "@/logic/props";
 
 import type {
   IdleVariant,
   MenuAction,
+  MenuDemo,
   PetAnimation,
   PetSettings,
   ScreenCorner,
@@ -95,6 +97,10 @@ const IDLE_VARIANTS: IdleVariant[] = [
 ];
 /** 贴边时只轮换"专注式"小动作：幅度小、不打扰使用者，且不含旋转 */
 const QUIET_IDLE_VARIANTS: IdleVariant[] = ["bob", "lean", "sway", "nod", "look"];
+/** 动作演示页选中的闲置动作被"钉住"的最长时长（毫秒），到期后恢复随机轮换 */
+const DEMO_PIN_MS = 60_000;
+/** 演示"吃蜂蜜"的动画时长（毫秒），与 feed() 保持一致 */
+const DEMO_EAT_MS = 3000;
 /** 连续快速点击达到该次数时触发"被戳晕"彩蛋反应 */
 const COMBO_CLICKS = 3;
 /** 判定连点的相邻点击间隔（毫秒） */
@@ -110,6 +116,13 @@ const FLING_ANIM_MS = 620;
 /** 30 秒内投喂达到次数上限会触发"吃撑了"反应 */
 const FEED_BURST_WINDOW_MS = 30_000;
 const FEED_BURST_LIMIT = 4;
+/** 蝴蝶小剧本：触发窗口 4~8 分钟、每次 50% 概率，飞过全程时长 */
+const BUTTERFLY_MIN_MS = 4 * 60_000;
+const BUTTERFLY_MAX_MS = 8 * 60_000;
+const BUTTERFLY_CHANCE = 0.5;
+const BUTTERFLY_SHOW_MS = 6800;
+/** 玩耍（羽毛球）动作时长：约两个来回 */
+const PLAY_ANIM_MS = 4600;
 
 export const DEFAULT_SETTINGS: PetSettings = {
   petSkin: "bear-full",
@@ -220,6 +233,11 @@ let proactiveTimer: number | null = null;
 let healthTimer: number | null = null;
 let lookTimer: number | null = null;
 let flingTimer: number | null = null;
+let butterflyTimer: number | null = null;
+let butterflyEndTimer: number | null = null;
+/** 动作演示：钉住的闲置动作与到期解除定时器（钉住期间随机轮换让位） */
+let demoPinned = false;
+let demoPinTimer: number | null = null;
 /** 拖拽期间最近的若干窗口位置采样（物理像素），用于甩动速度判定 */
 let dragSamples: { x: number; y: number; t: number }[] = [];
 /** 连点判定 */
@@ -256,6 +274,10 @@ export const usePetStore = defineStore("pet", {
     look: { x: 0, y: 0 },
     /** 甩动回弹方向（一次性动画，播完自动清空） */
     flingDir: null as "left" | "right" | null,
+    /** 玩耍时羽毛球飞向的方向（触发瞬间按视线方向定） */
+    playDir: "right" as "left" | "right",
+    /** 蝴蝶小剧本：正在飞 + 从哪侧入场 */
+    butterflySide: null as "left" | "right" | null,
     ready: false,
   }),
 
@@ -307,6 +329,9 @@ export const usePetStore = defineStore("pet", {
         await listen<MenuAction>("menu://action", (event) => {
           this.handleMenuAction(event.payload);
         }),
+        await listen<MenuDemo>("menu://demo", (event) => {
+          this.playDemo(event.payload);
+        }),
         await listen("settings://request", () => {
           void this.emitSettingsSync();
         }),
@@ -325,6 +350,7 @@ export const usePetStore = defineStore("pet", {
             this.startIdleRotation();
             this.startProactive();
             this.startLook();
+            this.startButterfly();
           }
         }),
         await win.onCloseRequested(async (event) => {
@@ -339,6 +365,7 @@ export const usePetStore = defineStore("pet", {
       this.startProactive();
       this.startHealthTick();
       this.startLook();
+      this.startButterfly();
       void this.ensureNotificationPermission();
 
       this.ready = true;
@@ -367,6 +394,7 @@ export const usePetStore = defineStore("pet", {
           if (
             this.settings.idleMode === "random" &&
             !this.paused &&
+            !demoPinned &&
             this.displayAnimation === "idle"
           ) {
             const base = this.edgeHidden ? QUIET_IDLE_VARIANTS : IDLE_VARIANTS;
@@ -413,9 +441,52 @@ export const usePetStore = defineStore("pet", {
       schedule();
     },
 
+    /**
+     * 蝴蝶小剧本调度：每 4~8 分钟一次机会、50% 概率放行。
+     * 触发时蝴蝶从一侧飞过，宠物切到"张望"并哼一声，全程约 7 秒。
+     */
+    startButterfly(): void {
+      if (butterflyTimer !== null) clearTimeout(butterflyTimer);
+      butterflyTimer = null;
+      const schedule = (): void => {
+        const wait =
+          BUTTERFLY_MIN_MS + Math.random() * (BUTTERFLY_MAX_MS - BUTTERFLY_MIN_MS);
+        butterflyTimer = window.setTimeout(() => {
+          butterflyTimer = null;
+          if (
+            this.ready &&
+            !this.paused &&
+            !this.sleeping &&
+            !this.tempAnimation &&
+            !this.bubble.visible &&
+            !this.edgeHidden &&
+            this.displayAnimation === "idle" &&
+            Math.random() < BUTTERFLY_CHANCE
+          ) {
+            this.spawnButterfly();
+          }
+          schedule();
+        }, wait);
+      };
+      schedule();
+    },
+
+    spawnButterfly(): void {
+      this.butterflySide = Math.random() < 0.5 ? "left" : "right";
+      if (this.settings.idleMode === "random") this.idleVariant = "look";
+      this.showBubble(
+        randomFrom(["哇，是蝴蝶！🦋", "蝴蝶蝴蝶，别飞走呀~", "（盯着蝴蝶看入了迷）"]),
+        4000,
+      );
+      if (butterflyEndTimer !== null) clearTimeout(butterflyEndTimer);
+      butterflyEndTimer = window.setTimeout(() => {
+        butterflyEndTimer = null;
+        this.butterflySide = null;
+      }, BUTTERFLY_SHOW_MS);
+    },
+
     /** 整点报时 + 连续用机休息提醒的巡检定时器 */
-    startHealthTick(): void {
-      if (healthTimer !== null) clearInterval(healthTimer);
+    startHealthTick(): void {      if (healthTimer !== null) clearInterval(healthTimer);
       healthTimer = window.setInterval(() => {
         void this.healthTick();
       }, HEALTH_TICK_MS);
@@ -535,6 +606,44 @@ export const usePetStore = defineStore("pet", {
       proactiveTimer = null;
     },
 
+    /**
+     * 动作演示页选中单个动作：立刻演示指定的闲置动作或吃蜂蜜/打羽毛球。
+     * 闲置动作会被"钉住"（随机轮换让位），便于反复观察道具效果；
+     * 到 DEMO_PIN_MS、贴边、再次选中其它动作或隐藏窗口时解除。
+     */
+    playDemo(demo: MenuDemo): void {
+      if (this.sleeping) this.wakeUp(false);
+      this.clearDemoPin();
+      if (demo.target === "temp") {
+        const label = demo.anim === "eat" ? "吃蜂蜜" : "打羽毛球";
+        this.showTempAnimation(demo.anim, demo.anim === "eat" ? DEMO_EAT_MS : PLAY_ANIM_MS);
+        this.showBubble(`🎭 ${label}`);
+        return;
+      }
+      // 清掉进行中的临时动画，让位给要演示的闲置动作
+      if (animTimer !== null) {
+        clearTimeout(animTimer);
+        animTimer = null;
+      }
+      this.tempAnimation = null;
+      this.idleVariant = demo.variant;
+      demoPinned = true;
+      demoPinTimer = window.setTimeout(() => {
+        demoPinned = false;
+        demoPinTimer = null;
+      }, DEMO_PIN_MS);
+      this.showBubble(`🎭 ${IDLE_VARIANT_LABELS[demo.variant]}`);
+    },
+
+    /** 解除"钉住"的演示动作，把轮换权交还给随机调度 */
+    clearDemoPin(): void {
+      if (demoPinTimer !== null) {
+        clearTimeout(demoPinTimer);
+        demoPinTimer = null;
+      }
+      demoPinned = false;
+    },
+
     /** 窗口隐藏时停掉所有可停的循环，显示后由焦点事件/初始化重新拉起 */
     parkTimers(): void {
       this.stopIdleRotation();
@@ -548,6 +657,16 @@ export const usePetStore = defineStore("pet", {
         flingTimer = null;
         this.flingDir = null;
       }
+      if (butterflyTimer !== null) {
+        clearTimeout(butterflyTimer);
+        butterflyTimer = null;
+      }
+      if (butterflyEndTimer !== null) {
+        clearTimeout(butterflyEndTimer);
+        butterflyEndTimer = null;
+      }
+      this.clearDemoPin();
+      this.butterflySide = null;
       dragSamples = [];
     },
 
@@ -628,7 +747,7 @@ export const usePetStore = defineStore("pet", {
 
     play(): void {
       if (this.sleeping) this.wakeUp(true);
-      this.showTempAnimation("play", 3000);
+      this.showTempAnimation("play", PLAY_ANIM_MS);
       this.showBubble(randomFrom(PLAY_PHRASES));
     },
 
@@ -697,6 +816,10 @@ export const usePetStore = defineStore("pet", {
 
     showTempAnimation(anim: PetAnimation, ms: number): void {
       if (animTimer !== null) clearTimeout(animTimer);
+      if (anim === "play") {
+        // 球往哪边打：取当前视线水平方向，让羽毛球朝鼠标那侧飞
+        this.playDir = this.look.x < 0 ? "left" : "right";
+      }
       this.tempAnimation = anim;
       const scaled = ms / Math.max(this.settings.animationSpeed, 0.1);
       animTimer = window.setTimeout(() => {
@@ -778,6 +901,7 @@ export const usePetStore = defineStore("pet", {
         this.corner = corner;
         this.edgeHidden = true;
         // 吸附到边缘后立刻切回"专注式"小动作，避免大幅动作（旋转/跳舞等）挂在屏外
+        this.clearDemoPin();
         if (!QUIET_IDLE_VARIANTS.includes(this.idleVariant)) {
           this.idleVariant = "bob";
         }
@@ -1010,6 +1134,9 @@ export const usePetStore = defineStore("pet", {
         healthTimer,
         lookTimer,
         flingTimer,
+        butterflyTimer,
+        butterflyEndTimer,
+        demoPinTimer,
       ]) {
         if (timer !== null) clearTimeout(timer);
       }
@@ -1025,6 +1152,8 @@ export const usePetStore = defineStore("pet", {
       healthTimer = null;
       lookTimer = null;
       flingTimer = null;
+      demoPinned = false;
+      demoPinTimer = null;
     },
   },
 });
