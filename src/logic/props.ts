@@ -11,7 +11,7 @@
  * 周期与所属动作的 idle-* 关键帧一致，切换瞬间同时起跑即自然同步。
  */
 
-import type { IdleVariant, PetAnimation } from "@/types";
+import type { IdleVariant, MenuDemo, PetAnimation } from "@/types";
 
 /** 全部道具种类 */
 export type PropKind =
@@ -90,6 +90,23 @@ export const IDLE_VARIANT_ICONS: Record<IdleVariant, string> = {
   kick: "⚽", // 足球
   wiggle: "〰️", // 波浪摆动
 };
+
+/**
+ * "动作演示"页的完整条目表（ContextMenu.vue 渲染、features 自测校验同一份数据）：
+ * 全部闲置变体（顺序= IDLE_VARIANT_LABELS 声明序，名称带 IDLE_VARIANT_ICONS 图标）
+ * + 吃蜂蜜 / 打羽毛球 / 地面漫步 / 蝴蝶过境四个特殊动作。
+ * 注意：本表在求值时读取上面两张表，必须保持声明顺序在其后。
+ */
+export const DEMO_ENTRIES: { label: string; demo: MenuDemo }[] = [
+  ...(Object.keys(IDLE_VARIANT_LABELS) as IdleVariant[]).map((v) => ({
+    label: `${IDLE_VARIANT_ICONS[v]} ${IDLE_VARIANT_LABELS[v]}`,
+    demo: { target: "idle", variant: v } as MenuDemo,
+  })),
+  { label: "🍯 吃蜂蜜", demo: { target: "temp", anim: "eat" } },
+  { label: "🏸 打羽毛球", demo: { target: "temp", anim: "play" } },
+  { label: "🚶 地面漫步", demo: { target: "walk" } },
+  { label: "🦋 蝴蝶过境", demo: { target: "butterfly" } },
+];
 
 /** 渲染层判定道具可见性所需的动作状态快照 */
 export interface PropsState {

@@ -1,6 +1,6 @@
 name: Release
 
-# 推送形如 v0.1.0 的 tag 即触发：云端构建 Windows NSIS 安装包并创建 GitHub Release 草稿
+# 推送形如 v0.2.0 的 tag 即触发：云端先跑自测，再构建 Windows NSIS 安装包并建 GitHub Release 草稿
 on:
   push:
     tags:
@@ -13,16 +13,20 @@ jobs:
       contents: write
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install npm dependencies
         run: npm ci
+
+      # 打包前先过功能自测（贴边几何 / 道具表 / 演示页数据 / 存档迁移），失败就不出包
+      - name: Run tests
+        run: npm run test
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -33,10 +37,9 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: Build & draft release
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          includeDebug: false
           releaseDraft: true
           prerelease: false

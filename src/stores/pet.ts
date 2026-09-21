@@ -19,15 +19,15 @@ import { defineStore } from "pinia";
 import {
   clampIntoWork,
   computeGaps,
-  detectCorner,
-  nearestEdge,
+  decideSnap,
+  DEFAULT_EDGE_RATIOS,
+  DEFAULT_GROUND_SINK_RATIO,
   pickMonitor,
   revealTarget,
-  shouldSnap,
   snapTarget,
   standOnGround,
-  type EdgeRatios,
   type Point,
+  type Rect,
   type Size,
 } from "@/logic/edge";
 import { mergeSettings } from "@/logic/settings";
@@ -59,24 +59,19 @@ const PROACTIVE_MIN_MS = 40_000;
 const PROACTIVE_MAX_MS = 100_000;
 /** 拖拽结束位置距屏幕边缘小于该值（逻辑像素）时吸附隐藏 */
 const EDGE_SNAP_THRESHOLD = 12;
+/** 拖拽中，已从吸附状态反向拖离超过"阈值 + 该余量"（逻辑像素）时当场脱附回正 */
+const DRAG_UNSTICK_EXTRA = 26;
 /** 距两条边都小于该值（逻辑像素）时判定为卡在屏幕角落 */
 const CORNER_SNAP_TOLERANCE = 40;
-/** 角落吸附时保留可见的窗口比例：45° 斜靠需要比单边更大的露出面积 */
-const CORNER_VISIBLE_RATIO = 0.58;
 /** 窗口停止移动多久后判定拖拽结束（毫秒） */
 const DRAG_END_DEBOUNCE_MS = 400;
-/** 吸附隐藏后仍保留可见的窗口比例 */
-const EDGE_VISIBLE_RATIO = 0.42;
-/** 上缘单独的比例：倒挂探头时吸附深度更浅，露出更多 */
-const EDGE_TOP_VISIBLE_RATIO = 0.5;
-/** 下缘单独的比例：底部探头露出多一些，避免静坐/小动作被裁掉 */
-const EDGE_BOTTOM_VISIBLE_RATIO = 0.3;
+/** 判定结束后该时长内窗口又移动，说明用户仍按着不放，恢复拖拽态（毫秒） */
+const DRAG_RESUME_MS = 1500;
 /**
- * 底部落地时窗口允许探出工作区下缘的比例：等于画面下方的透明衬底份额
- * （.pet 占窗口 65.6%、居中，衬底 (1-0.656)/2 ≈ 0.172，见 edge.ts 头注释），
- * 让脚底"踩"在平面线上而不是悬空。
+ * 底部落地时窗口允许探出工作区下缘的比例（= 画面透明衬底份额，
+ * 让脚底"踩"在平面线上而不是悬空）。数值见 edge.ts 的 DEFAULT_* 表。
  */
-const GROUND_SINK_RATIO = 0.172;
+const GROUND_SINK_RATIO = DEFAULT_GROUND_SINK_RATIO;
 /** 滑出 / 滑入动画时长（毫秒） */
 const EDGE_ANIM_MS = 200;
 /** 透明窗口相对宠物可见尺寸的放大系数：给影子、挥手、气泡等留出画外余量 */
@@ -163,14 +158,8 @@ export const DEFAULT_SETTINGS: PetSettings = {
   performanceMode: false,
 };
 
-/** 传给 logic/edge.ts 的各边露出比例（像素换算见 edge.ts 顶部注释） */
-const EDGE_RATIOS: EdgeRatios = {
-  left: EDGE_VISIBLE_RATIO,
-  right: EDGE_VISIBLE_RATIO,
-  top: EDGE_TOP_VISIBLE_RATIO,
-  bottom: EDGE_BOTTOM_VISIBLE_RATIO,
-  corner: CORNER_VISIBLE_RATIO,
-};
+/** 传给 logic/edge.ts 的各边露出比例（默认值与像素换算注释都在 edge.ts） */
+const EDGE_RATIOS = DEFAULT_EDGE_RATIOS;
 
 const CLICK_PHRASES = [
   "你好呀~",
@@ -279,6 +268,16 @@ let walkTimer: number | null = null;
 let walkSeq = 0;
 /** 拖拽期间最近的若干窗口位置采样（物理像素），用于甩动速度判定 */
 let dragSamples: { x: number; y: number; t: number }[] = [];
+/**
+ * 拖拽开始时缓存的窗口几何（尺寸/所在显示器工作区/缩放）。
+ * 拖拽中的逐帧判定靠 onMoved 的 payload 驱动，只需一份不变的参照系，
+ * 避免每帧重新 IPC 询问窗口尺寸与显示器。拖拽结束即清空。
+ */
+let dragGeom: { size: Size; work: Rect; scale: number } | null = null;
+/** 上次判定"拖拽结束"的时刻，用于识别"系统没回传 pointerup、用户其实还按着" */
+let dragSettledAt = 0;
+/** 我们自己做位移时落下的坐标：用于把自触发的 onMoved 和用户的拖动区分开 */
+let lastSelfPlace: Point | null = null;
 /** 连点判定 */
 let lastClickAt = 0;
 let clickCombo = 0;
@@ -383,8 +382,12 @@ export const usePetStore = defineStore("pet", {
           void this.applySettings(event.payload);
         }),
         await win.onMoved(({ payload }) => {
-          this.sampleDrag({ x: payload.x, y: payload.y });
-          this.scheduleSaveWindowPos({ x: payload.x, y: payload.y });
+          const p = { x: payload.x, y: payload.y };
+          this.sampleDrag(p);
+          this.scheduleSaveWindowPos(p);
+          // 停顿去抖后若窗口又动起来（系统没回传 pointerup），重新认作拖拽中
+          this.resumeDragIfMoving(p);
+          this.dragHoldTick(p);
           this.noteWindowMoved();
         }),
         await win.onFocusChanged(({ payload: focused }) => {
@@ -888,6 +891,8 @@ export const usePetStore = defineStore("pet", {
       this.stopWalking();
       this.butterflySide = null;
       dragSamples = [];
+      dragGeom = null;
+      dragSettledAt = 0;
     },
 
     async ensureNotificationPermission(): Promise<void> {
@@ -1061,6 +1066,63 @@ export const usePetStore = defineStore("pet", {
     beginDrag(): void {
       this.stopWalking();
       this.dragActive = true;
+      // 角落姿态横竖两轴都钉着，一按住就再也拖不动了：起手先降级成单边吸附，
+      // 松手时再由 handleDragEnd 重新判角落
+      if (this.edgeHidden) this.corner = null;
+      void this.refreshDragGeom();
+    },
+
+    /**
+     * 采样拖拽期间的几何参照系（窗口尺寸 + 所在显示器工作区 + 缩放）。
+     * 只在起手和"落定后又重新移动"时调用一次，拖拽中的逐帧判定直接复用缓存。
+     */
+    async refreshDragGeom(): Promise<void> {
+      const win = getCurrentWindow();
+      try {
+        const [pos, size] = await Promise.all([
+          win.outerPosition(),
+          win.outerSize(),
+        ]);
+        const monitor = await this.resolveMonitor(pos, size);
+        if (!monitor) return;
+        dragGeom = {
+          size: { width: size.width, height: size.height },
+          work: monitor.workArea,
+          scale: monitor.scaleFactor,
+        };
+      } catch (err) {
+        console.warn("拖拽几何采样失败，本次拖拽不做贴边判定:", err);
+        dragGeom = null;
+      }
+    },
+
+    /**
+     * 拖拽中只维护贴边状态，绝不动窗口位置。
+     * Windows 的模态拖拽每帧都按光标重摆窗口，这里若再 setPosition 吸回吸附点，
+     * 就成了"系统拖进来 / 我们吸出去"的逐帧对拉，视觉上就是闪烁；
+     * 中间那次 setPosition 还会自触发 onMoved，让闪烁多叠一层。
+     * 所以实时部分只做"按住往屏内拖离超过脱附线就当场解除吸附（回正）"，
+     * 真正的吸附落位交给停顿去抖后的 handleDragEnd —— 它同样不等松手。
+     */
+    dragHoldTick(pos: Point): void {
+      if (!this.dragActive || this.sliding) return;
+      if (!this.edgeHidden || !this.edge) return;
+      // 角落姿态横竖两轴都钉住，按住就再也拖不动了：先降级成单边判定，
+      // 松手时再由 handleDragEnd 重新判角落
+      this.corner = null;
+      // 降级后只剩底边：底边单侧本来就不吸附（留给站立漫步），直接放手
+      if (this.edge === "bottom") {
+        this.edge = null;
+        this.edgeHidden = false;
+        return;
+      }
+      const geom = dragGeom;
+      if (!geom) return;
+      const unstick = (EDGE_SNAP_THRESHOLD + DRAG_UNSTICK_EXTRA) * geom.scale;
+      if (computeGaps(pos, geom.size, geom.work)[this.edge] > unstick) {
+        this.edge = null;
+        this.edgeHidden = false;
+      }
     },
 
     /**
@@ -1074,14 +1136,46 @@ export const usePetStore = defineStore("pet", {
         dragEndTimer = null;
         if (!this.dragActive) return;
         this.dragActive = false;
-        void this.handleDragEnd();
+        dragSettledAt = Date.now();
+        // 鼠标很可能还按着：只 instant 落位，不播滑动动画，
+        // 否则动画的每次 setPosition 会和系统拖拽互相抢位（闪烁）
+        void this.handleDragEnd({ instant: true });
       }, DRAG_END_DEBOUNCE_MS);
+    },
+
+    /**
+     * 系统拖拽不一定回传 pointerup：判定结束后窗口又动起来，说明用户还按着，
+     * 重新拉起拖拽态并刷新几何缓存，让贴边判定继续生效。
+     * 我们自己落位时的 setPosition 也会触发 onMoved，靠 lastSelfPlace 认出来跳过，
+     * 否则会凭自触发的事件虚构出一个"用户还在拖"的状态。
+     */
+    resumeDragIfMoving(pos: Point): void {
+      if (
+        this.dragActive ||
+        this.sliding ||
+        this.walking ||
+        dragSettledAt === 0 ||
+        Date.now() - dragSettledAt > DRAG_RESUME_MS
+      ) {
+        return;
+      }
+      if (
+        lastSelfPlace &&
+        Math.abs(pos.x - lastSelfPlace.x) <= 2 &&
+        Math.abs(pos.y - lastSelfPlace.y) <= 2
+      ) {
+        return;
+      }
+      dragSettledAt = 0;
+      this.dragActive = true;
+      void this.refreshDragGeom();
     },
 
     /** 鼠标抬起时兜底（Windows 的模态拖拽不一定回传 pointerup） */
     endDrag(): void {
       if (!this.dragActive) return;
       this.dragActive = false;
+      dragSettledAt = Date.now();
       if (dragEndTimer !== null) {
         clearTimeout(dragEndTimer);
         dragEndTimer = null;
@@ -1089,11 +1183,13 @@ export const usePetStore = defineStore("pet", {
       void this.handleDragEnd();
     },
 
-    /** 拖拽结束时调用：靠近屏幕边缘则吸附并部分滑出，否则把宠物拉回屏幕内。
-     *  几何计算全部委托给 logic/edge.ts 的纯函数（带单测）。 */
-    async handleDragEnd(): Promise<void> {
+    /** 松手（或拖拽停顿去抖）时调用：靠近屏幕边缘则吸附并部分滑出，否则把宠物拉回屏幕内。
+     *  几何计算全部委托给 logic/edge.ts 的纯函数（带单测）。
+     *  `instant` 用于"鼠标可能还按着"的停顿路径：直接落位，不播逐帧滑动动画。 */
+    async handleDragEnd(opts: { instant?: boolean } = {}): Promise<void> {
       if (this.sliding) return;
       const win = getCurrentWindow();
+      dragGeom = null;
       try {
         this.flingIfNeeded();
 
@@ -1111,14 +1207,14 @@ export const usePetStore = defineStore("pet", {
         const work = monitor.workArea;
         const scale = monitor.scaleFactor;
         const gaps = computeGaps(pos, size, work);
-        const edge = nearestEdge(gaps);
-        const corner = detectCorner(gaps, CORNER_SNAP_TOLERANCE * scale);
-        // 底边单侧不吸附：放在底部就是"站在地面"，保留给地面漫步；
-        // 想触发底部探头姿态请拖到左下/右下角（角落吸附仍有效）
-        const snapping =
-          corner !== null ||
-          (edge !== "bottom" &&
-            shouldSnap(gaps, edge, EDGE_SNAP_THRESHOLD * scale));
+        // 与拖拽中的脱附判定共用同一套 gap 口径，两条路径结论不会打架
+        const { edge, corner, snapping } = decideSnap(
+          pos,
+          size,
+          work,
+          EDGE_SNAP_THRESHOLD * scale,
+          CORNER_SNAP_TOLERANCE * scale,
+        );
 
         if (!snapping) {
           // 没有贴到边缘：清除贴边状态，并把窗口收回到可用区域内，
@@ -1133,7 +1229,8 @@ export const usePetStore = defineStore("pet", {
               ? standOnGround(pos, size, work, GROUND_SINK_RATIO)
               : clampIntoWork(pos, size, work);
           if (clamped.x !== pos.x || clamped.y !== pos.y) {
-            await this.slideTo(clamped, 120);
+            if (opts.instant) await this.placeAt(clamped);
+            else await this.slideTo(clamped, 120);
           }
           return;
         }
@@ -1146,12 +1243,29 @@ export const usePetStore = defineStore("pet", {
         if (!QUIET_IDLE_VARIANTS.includes(this.idleVariant)) {
           this.idleVariant = "bob";
         }
-        await this.slideTo(
-          snapTarget({ pos, size, work, edge, corner, ratios: EDGE_RATIOS }),
-        );
+        const target = snapTarget({
+          pos,
+          size,
+          work,
+          edge,
+          corner,
+          ratios: EDGE_RATIOS,
+        });
+        if (target.x !== pos.x || target.y !== pos.y) {
+          if (opts.instant) await this.placeAt(target);
+          else await this.slideTo(target);
+        }
       } catch (err) {
         console.warn("贴边隐藏失败:", err);
       }
+    },
+
+    /** 一次性把窗口放到指定位置（物理像素），用于"鼠标还按着"的停顿落位 */
+    async placeAt(target: Point): Promise<void> {
+      lastSelfPlace = { x: target.x, y: target.y };
+      await getCurrentWindow().setPosition(
+        new PhysicalPosition(target.x, target.y),
+      );
     },
 
     /**
@@ -1210,6 +1324,10 @@ export const usePetStore = defineStore("pet", {
         for (let i = 1; i <= steps; i += 1) {
           const t = i / steps;
           const eased = 1 - Math.pow(1 - t, 3);
+          lastSelfPlace = {
+            x: Math.round(from.x + (target.x - from.x) * eased),
+            y: Math.round(from.y + (target.y - from.y) * eased),
+          };
           await win.setPosition(
             new PhysicalPosition(
               Math.round(from.x + (target.x - from.x) * eased),

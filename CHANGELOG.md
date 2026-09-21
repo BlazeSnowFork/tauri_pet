@@ -1,6 +1,37 @@
 # 更新日志
 
-本项目版本号同步维护在三处：`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`，发版前请一并修改后再打 tag。
+本项目版本号同步维护在三处：`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`，
+另外两份锁文件（`package-lock.json`、`src-tauri/Cargo.lock`）里的自身包版本会跟着变，
+发版前请一并确认后再打 tag。
+
+## v0.2.0（2026-09-21）
+
+### 屏幕贴边
+
+- 贴边判定改为"看宠物位置、不等松手"：拖到位后停手 400ms（`DRAG_END_DEBOUNCE_MS`）即按同一套规则吸附
+- 按住往屏内拖离超过"吸附阈值 + 脱附余量 `DRAG_UNSTICK_EXTRA`（26 逻辑像素）"时当场解除吸附、恢复常态姿态
+- 修掉"停顿后再拖动就没反应"：系统没回传 pointerup 时，窗口重新移动会自动恢复拖拽态（`resumeDragIfMoving`）
+- 修掉边缘闪烁：拖拽中曾逐帧 `setPosition` 把窗口吸回吸附点，与系统模态拖拽互相抢位、每帧来回跳上百像素；
+  现在拖拽中只切换贴边状态，位移统一交给停顿判定后的 `handleDragEnd`
+
+### 视觉与演示
+
+- 视线跟随升级为三层视差：瞳孔 → 眼部高光 → 头颅（含耳朵、嘴套、腮红联动）
+- "动作演示"页与主菜单同尺寸、单列滚动，不再撑高窗口（修掉屏幕底部右键时超出工作区）
+- 演示项逐条配简易图标；新增"地面漫步""蝴蝶过境"两个剧情条目
+- 修掉设置窗口右上角两个关闭按钮：页内 ✕ 与原生标题栏重复，现只留原生标题栏的关闭（点它仍只隐藏窗口）
+- 闲置/漫步/蝴蝶的触发间隔整体拉长（闲置轮换 12~24 秒、漫步 90~200 秒、蝴蝶 6~14 分钟）
+
+### 工程
+
+- 新增一键打包脚本 `npm run pkg`（`scripts/package.ps1`）：先跑功能自测再 `tauri build`，
+  把 NSIS 安装包与"exe + WebView2Loader.dll 同目录"的免安装版一起汇总进 `pkg/`
+- 新增发布前功能自测 `src/logic/__tests__/features.test.ts`：锁住贴边判定与落位的互洽、
+  露出比例取值域、演示页数据表与动作/图标/道具表的同步关系（共 13 项，全套 42 项）
+- GitHub Actions 在打包前先跑 `npm run test`，任一功能自测不过就不出包；
+  工作流依赖升级到 checkout@v7 / setup-node@v7（Node 24）/ tauri-action@v1
+- 免安装版与 NSIS 安装包都随包携带 `WebView2Loader.dll`（修掉部分机器启动报"找不到 dll"）
+- 打包产物收敛为仅 NSIS 安装包
 
 ## v0.1.0（2026-09-21）
 

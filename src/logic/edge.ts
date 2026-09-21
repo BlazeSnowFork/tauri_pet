@@ -67,7 +67,10 @@ export function nearestEdge(gaps: EdgeGaps): ScreenEdge {
  * 角落判定：横向、纵向各取离得最近的一条边，两者都落在容差内才算卡在角落。
  * 返回 null 表示只靠近一条边（或都没靠近）。
  */
-export function detectCorner(gaps: EdgeGaps, tolerance: number): ScreenCorner | null {
+export function detectCorner(
+  gaps: EdgeGaps,
+  tolerance: number,
+): ScreenCorner | null {
   const horiz: "left" | "right" | null =
     gaps.left <= tolerance && gaps.left <= gaps.right
       ? "left"
@@ -84,7 +87,11 @@ export function detectCorner(gaps: EdgeGaps, tolerance: number): ScreenCorner | 
 }
 
 /** 该边是否达到吸附阈值（edge 为横向/纵向中更接近的一条） */
-export function shouldSnap(gaps: EdgeGaps, edge: ScreenEdge, threshold: number): boolean {
+export function shouldSnap(
+  gaps: EdgeGaps,
+  edge: ScreenEdge,
+  threshold: number,
+): boolean {
   return gaps[edge] <= threshold;
 }
 
@@ -112,9 +119,13 @@ export function snapTarget(args: {
     Math.round(size.height * (1 - (corner ? ratios.corner : ratios[side])));
 
   const xOf = (side: "left" | "right"): number =>
-    side === "left" ? left - hiddenX("left") : right - size.width + hiddenX("right");
+    side === "left"
+      ? left - hiddenX("left")
+      : right - size.width + hiddenX("right");
   const yOf = (side: "top" | "bottom"): number =>
-    side === "top" ? top - hiddenY("top") : bottom - size.height + hiddenY("bottom");
+    side === "top"
+      ? top - hiddenY("top")
+      : bottom - size.height + hiddenY("bottom");
 
   if (corner) {
     return {
@@ -135,7 +146,13 @@ export function snapTarget(args: {
 }
 
 /** 从边缘滑回的目标：贴到可用区边界、完整可见 */
-export function revealTarget(pos: Point, size: Size, work: Rect, corner: ScreenCorner | null, edge: ScreenEdge): Point {
+export function revealTarget(
+  pos: Point,
+  size: Size,
+  work: Rect,
+  corner: ScreenCorner | null,
+  edge: ScreenEdge,
+): Point {
   const left = work.position.x;
   const top = work.position.y;
   const rightX = left + work.size.width - size.width;
@@ -168,12 +185,52 @@ export function clampIntoWork(pos: Point, size: Size, work: Rect): Point {
   };
 }
 
+/** 各边露出比例的默认值（单一调档点；像素换算与 pet.css peek-* 的互引见文件头注释） */
+export const DEFAULT_EDGE_RATIOS: EdgeRatios = {
+  left: 0.42,
+  right: 0.42,
+  top: 0.5, // 倒挂探头吸附更浅，露出更多
+  bottom: 0.3, // 底部探头多露一点，避免静坐/小动作被裁掉
+  corner: 0.58, // 45° 斜靠需要比单边更大的露出面积
+};
+
+/** 底部落地"脚踩线"时窗口探出工作区下缘的比例（画面透明衬底份额） */
+export const DEFAULT_GROUND_SINK_RATIO = 0.172;
+
+/**
+ * 贴边判定统一入口：拖拽中停顿去抖后的落位与松手后的落位都走这里，
+ * 保证"按住不放拖到边缘"与"松手时判定"结论一致（拖拽移动中只做脱附判定，
+ * 不再抢窗口位置，见 stores/pet.ts 的 dragHoldTick）。
+ * 规则：角落可吸；底边单侧不吸（放在底部 = 站在地面，留给地面漫步）。
+ * 阈值均为物理像素。
+ */
+export function decideSnap(
+  pos: Point,
+  size: Size,
+  work: Rect,
+  edgeThreshold: number,
+  cornerTolerance: number,
+): { edge: ScreenEdge; corner: ScreenCorner | null; snapping: boolean } {
+  const gaps = computeGaps(pos, size, work);
+  const edge = nearestEdge(gaps);
+  const corner = detectCorner(gaps, cornerTolerance);
+  const snapping =
+    corner !== null ||
+    (edge !== "bottom" && shouldSnap(gaps, edge, edgeThreshold));
+  return { edge, corner, snapping };
+}
+
 /**
  * 底部"脚踏实地"落位：横向同 clampIntoWork，纵向把窗口下缘允许探出工作区底部
  * sinkRatio 比例（即 .pet 画面下方的透明衬底占窗口的份额），
  * 使宠物画面的底缘正好压在工作区下缘线上，而不是整窗内缩导致脚悬空。
  */
-export function standOnGround(pos: Point, size: Size, work: Rect, sinkRatio: number): Point {
+export function standOnGround(
+  pos: Point,
+  size: Size,
+  work: Rect,
+  sinkRatio: number,
+): Point {
   const left = work.position.x;
   const top = work.position.y;
   const bottom = top + work.size.height;

@@ -6,6 +6,9 @@ dist
 src-tauri/target
 src-tauri/gen/schemas
 
+# scripts/package.ps1 的产物目录
+pkg
+
 # 编辑器
 .DS_Store
 *.local

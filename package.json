@@ -1,7 +1,7 @@
 {
   "name": "tauri-desktop-pet",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,7 @@
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
     "icons": "node scripts/gen-icons.mjs",
+    "pkg": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package.ps1",
     "tauri": "tauri"
   },
   "dependencies": {

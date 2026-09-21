@@ -4,8 +4,8 @@ import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { onMounted, ref } from "vue";
 
-import { IDLE_VARIANT_ICONS, IDLE_VARIANT_LABELS } from "@/logic/props";
-import type { IdleVariant, MenuAction, MenuDemo, MenuItemDef } from "@/types";
+import { DEMO_ENTRIES } from "@/logic/props";
+import type { MenuAction, MenuDemo, MenuItemDef } from "@/types";
 
 /** 主菜单窗口逻辑尺寸（与 Rust MENU_SIZE / tauri.conf.json 同步）；
  * 演示页与主菜单同尺寸，靠内部单列滚动容纳全部动作，
@@ -22,17 +22,8 @@ const items: MenuItemDef[] = [
   { key: "quit", label: "🚪 退出", danger: true },
 ];
 
-/** 演示页可选动作：全部闲置变体（沿用 IDLE_VARIANT_LABELS 的声明顺序，图标见 IDLE_VARIANT_ICONS）+ 四个特殊动作 */
-const demos: { label: string; demo: MenuDemo }[] = [
-  ...(Object.keys(IDLE_VARIANT_LABELS) as IdleVariant[]).map((v) => ({
-    label: `${IDLE_VARIANT_ICONS[v]} ${IDLE_VARIANT_LABELS[v]}`,
-    demo: { target: "idle", variant: v } as MenuDemo,
-  })),
-  { label: "🍯 吃蜂蜜", demo: { target: "temp", anim: "eat" } },
-  { label: "🏸 打羽毛球", demo: { target: "temp", anim: "play" } },
-  { label: "🚶 地面漫步", demo: { target: "walk" } },
-  { label: "🦋 蝴蝶过境", demo: { target: "butterfly" } },
-];
+/** 演示页可选动作：条目表在 logic/props.ts 的 DEMO_ENTRIES（features 自测校验同一份数据） */
+const demos = DEMO_ENTRIES;
 
 const page = ref<"main" | "demo">("main");
 

@@ -191,21 +191,6 @@
   font-size: 18px;
 }
 
-.btn-close {
-  border: none;
-  background: transparent;
-  font-size: 16px;
-  cursor: pointer;
-  color: #8a7a66;
-  padding: 4px 8px;
-  border-radius: 6px;
-}
-
-.btn-close:hover {
-  background: #f5e9d5;
-  color: #4a3728;
-}
-
 .settings-body {
   flex: 1;
   overflow-y: auto;

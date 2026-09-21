@@ -56,9 +56,9 @@ onUnmounted(() => {
 
 <template>
   <div class="settings-window">
+    <!-- 关闭交给原生标题栏（点它只隐藏窗口），页内不再重复放 ✕ -->
     <div class="settings-header">
       <h2>宠物设置</h2>
-      <button type="button" class="btn-close" title="关闭" @click="close">✕</button>
     </div>
 
     <div class="settings-body">

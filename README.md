@@ -12,6 +12,7 @@ tauri-desktop-pet/
 ├── tsconfig.json
 ├── scripts/
 │   ├── gen-icons.mjs              # 纯 Node 生成应用图标（PNG/ICO，无第三方依赖）
+│   ├── package.ps1                # 一键打包：自测 → tauri build → 汇总安装包/免安装版到 pkg/（须保留 UTF-8 BOM）
 │   └── add-user-path.ps1          # 将 cargo/mingw 加入用户 PATH（Windows 辅助脚本）
 ├── src/
 │   ├── main.ts                    # 应用入口：按窗口 label 挂载不同根组件
@@ -75,15 +76,17 @@ tauri-desktop-pet/
 
 ## 贴边隐藏与探头姿态
 
-1. 把宠物拖到屏幕边缘（距可用区域边界 ≤12 逻辑像素）并松开 → 窗口滑出屏幕，只保留一部分可见：左/右缘 42%、上缘 50%。**下缘单侧不吸附**：拖到底部松手即"站在地面"——窗口下缘按透明衬底比例（`GROUND_SINK_RATIO` 0.172）探出工作区，脚底正好压在下边线上，是地面漫步的触发姿态；想要底部探头姿态请拖到左下/右下角。
-2. **探头姿态**（作用于内层 `.pet-svg`，与外层身体动画叠加）：左右缘朝桌面可见一侧歪头 22°~36° 轻摆、单手撑边；上缘整个倒挂 180°、头朝向屏幕内。
-3. **四角吸附**：同时贴近两条边（容差 40 逻辑像素）判定为角落，横竖偏移叠加且露出比例加大到 58%。左上/右上角以约 135°（倒挂再斜 45°）垂挂、头朝桌面内侧浮动；左下/右下角以约 45° 斜靠着底边偷看。
-4. **点击露出的那部分** → 宠物完整滑回屏幕内（不触发随机动作）。
-5. 松开时没有贴到边缘 → 不触发隐藏，并把窗口收回到可用区域内，**不会出现"半截挂在屏幕外"的状态**。
-6. 拖拽结束的判定**不依赖 `startDragging` 的返回时机**（各平台语义不一致）：由窗口移动事件去抖动得出——连续 400ms 没有新的移动即视为拖拽结束。
-7. **多显示器**：贴边/滑回按"窗口中心点落在哪块屏"选择显示器（`pickMonitor`），跨屏松手瞬间不会误用旧屏的可用区。
+1. 把宠物拖到屏幕边缘（距可用区域边界 ≤12 逻辑像素）→ 窗口滑出屏幕，只保留一部分可见：左/右缘 42%、上缘 50%。**下缘单侧不吸附**：拖到底部松手即"站在地面"——窗口下缘按透明衬底比例（`GROUND_SINK_RATIO` 0.172）探出工作区，脚底正好压在下边线上，是地面漫步的触发姿态；想要底部探头姿态请拖到左下/右下角。
+2. **按宠物位置触发，不等松手**：判定用的是窗口当前坐标而非 pointerup——拖到位后停手 400ms（`DRAG_END_DEBOUNCE_MS`，此时鼠标还按着）即按同一套规则吸附；按住往屏内拖离超过"吸附阈值 + `DRAG_UNSTICK_EXTRA`（26 逻辑像素）"就当场解除吸附、恢复常态姿态。
+3. **拖拽中只判状态、不动窗口**（`dragHoldTick`）：Windows 的模态拖拽每帧都按光标重摆窗口，若在移动事件里再 `setPosition` 吸回吸附点，就成了"系统拖进来 / 我们吸出去"的逐帧对拉，窗口每帧来回跳上百像素——表现为宠物在边缘**闪烁**。所以实时部分只翻 `edgeHidden`/姿态状态，位移一律交给 `handleDragEnd`。
+4. **探头姿态**（作用于内层 `.pet-svg`，与外层身体动画叠加）：左右缘朝桌面可见一侧歪头 22°~36° 轻摆、单手撑边；上缘整个倒挂 180°、头朝向屏幕内。
+5. **四角吸附**：同时贴近两条边（容差 40 逻辑像素）判定为角落，横竖偏移叠加且露出比例加大到 58%。左上/右上角以约 135°（倒挂再斜 45°）垂挂、头朝桌面内侧浮动；左下/右下角以约 45° 斜靠着底边偷看。角落只在停顿/松手那一刻判定——拖拽中把横竖两轴同时钉住会让宠物再也拖不出来。
+6. **点击露出的那部分** → 宠物完整滑回屏幕内（不触发随机动作）。
+7. 松开时没有贴到边缘 → 不触发隐藏，并把窗口收回到可用区域内，**不会出现"半截挂在屏幕外"的状态**。
+8. 拖拽结束的判定**不依赖 `startDragging` 的返回时机**（各平台语义不一致）：由窗口移动事件去抖动得出——连续 400ms 没有新的移动即视为拖拽结束。若结束之后窗口又动起来（说明其实还按着没松），1.5s 内会自动恢复拖拽态并重取几何缓存（`resumeDragIfMoving` / `DRAG_RESUME_MS`），贴边判定继续生效；我们自己落位时 `setPosition` 自触发的那些移动事件由 `lastSelfPlace` 认出来跳过，不会凭此虚构出"用户还在拖"的状态。
+9. **多显示器**：贴边/滑回按"窗口中心点落在哪块屏"选择显示器（`pickMonitor`），跨屏松手瞬间不会误用旧屏的可用区；拖拽起手时采样一次尺寸/工作区/缩放并缓存（`refreshDragGeom`），逐帧判定不再发 IPC 请求。
 
-几何计算（gap 计算、最近边、角落判定、吸附/滑回目标、clamp）全部抽在 `src/logic/edge.ts` 的纯函数里，参数与返回值均为物理像素，`src/logic/__tests__/edge.test.ts` 对其逐项断言。阈值、各边/角落可见比例仍集中在 `src/stores/pet.ts` 顶部常量（`EDGE_SNAP_THRESHOLD` / `EDGE_RATIOS` / `CORNER_SNAP_TOLERANCE` / `WINDOW_PAD`）与 `src/styles/pet.css` 的 `peek-*` 关键帧里，角度/位移均为单处可调数值；edge.ts 文件头注释给出了"露出比例 ↔ 画面内容线"的换算公式，与 CSS 数值互相引用。
+几何计算（gap 计算、最近边、角落判定、吸附/滑回目标、clamp、以及拖拽中与松手时共用的统一判定 `decideSnap`）全部抽在 `src/logic/edge.ts` 的纯函数里，参数与返回值均为物理像素，`src/logic/__tests__/edge.test.ts` 对其逐项断言。阈值、各边/角落可见比例（`DEFAULT_EDGE_RATIOS`）与脱附余量分别在 `src/logic/edge.ts` 与 `src/stores/pet.ts` 顶部常量（`EDGE_SNAP_THRESHOLD` / `DRAG_UNSTICK_EXTRA` / `CORNER_SNAP_TOLERANCE` / `WINDOW_PAD`）里单点可调；`src/styles/pet.css` 的 `peek-*` 关键帧承接角度/位移数值，edge.ts 文件头注释给出了"露出比例 ↔ 画面内容线"的换算公式，两边互相引用。
 
 ## 环境准备
 
@@ -119,20 +122,55 @@ npm run tauri dev    # 开发模式：热重载，桌面出现小宠物
 
 ## 构建打包
 
+**日常只需一条命令**（在项目根目录）：
+
+```bash
+npm run pkg                      # 一键打包：功能自测 → tauri build → 汇总到 pkg/
+```
+
+它等价于 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package.ps1`，按顺序做三件事：
+
+1. `npm run test`：全量功能自测（当前 42 项），任一不过就**直接失败不出包**。
+2. `npm run tauri build`：release 编译 + NSIS 打包（首次约几分钟，之后增量很快）。
+3. 把产物汇总进 `pkg/`（该目录已在 `.gitignore` 里，脚本每次先清空重建）：
+
+```
+pkg/
+├── tauri-desktop-pet_<版本>_x64-setup.exe     安装版：发给别人直接装
+├── tauri-desktop-pet-portable-<版本>-x64/     免安装版：tauri-desktop-pet.exe + WebView2Loader.dll
+└── tauri-desktop-pet-portable-<版本>-x64.zip  上面那个文件夹的压缩包，解压即用
+```
+
+免安装版分发时**整个文件夹**（或那个 zip）一起给出去，两个文件必须在同一目录，单拷 exe 会报"找不到 WebView2Loader.dll"。
+
+不想在本机编译：见下文《发布新版本（GitHub Actions 云端打包）》。云端只产 NSIS 安装包，免安装版（exe + dll 那一套）仍需本机 `npm run pkg`。
+
+想跳过步骤：`powershell -File scripts/package.ps1 -SkipTests`（不跑自测）、`-SkipBuild`（不编译，直接复用 `src-tauri/target/release` 里的旧产物，只重跑第 3 步汇总；此时若安装包文件名里的版本号和 `package.json` 不一致会打警告）。改脚本本身时用 `-SkipTests -SkipBuild` 几秒就能验证一遍。
+
+两个坑备忘：PowerShell 5.1 按系统 ANSI 代码页读取脚本，所以 `package.ps1` **必须保留 UTF-8 BOM**，否则中文注释/字符串会让解析直接报错；脚本开头会把控制台切到 UTF-8，否则中文输出乱码。
+
+底层命令（不走脚本时）：
+
 ```bash
 npm run tauri build            # 发布构建，产物在 src-tauri/target/release/bundle/
 npm run tauri build -- --nsis  # Windows 仅打 NSIS 安装包
 ```
 
-免安装分发：`target/release/tauri-desktop-pet.exe` 动态链接 WebView2，单拷 exe 会报"找不到 WebView2Loader.dll"，需连同同目录的 `WebView2Loader.dll` 一起放在同一文件夹。NSIS 安装包同样不会自动收集该 dll，已把它入库为 `src-tauri/WebView2Loader.dll` 并在 `bundle.resources` 声明，随安装器一并释放到安装目录——升级 tauri 依赖时记得同步替换这个 dll。
+`bundle.targets` 已收敛为 `["nsis"]`；NSIS 安装器默认不会收集 WebView2Loader.dll，已把它入库为 `src-tauri/WebView2Loader.dll` 并在 `bundle.resources` 声明，随安装器一并释放到安装目录——升级 tauri 依赖时记得同步替换这个 dll。
 
-其他脚本：`npm run dev`（仅前端）、`npm run build`（类型检查 + 打包）、`npm run typecheck`、`npm run test`（Vitest 单测，覆盖 `src/logic/` 纯函数）、`npm run icons`。
+其他脚本：`npm run dev`（仅前端）、`npm run build`（类型检查 + 打包）、`npm run typecheck`、`npm run test`（Vitest 功能自测）、`npm run icons`。
+
+`npm run test` 是发布前的自测闸门，`src/logic/__tests__/` 下四份文件分管不同层面：
+`edge.test.ts` / `props.test.ts` / `settings.test.ts` 逐个函数断言，
+`features.test.ts` 专门锁**跨模块的约定**（改了 A 忘了改 B 就会红）——
+贴边吸附的判定/落位/脱附互洽、各边露出比例的取值域、演示页列表与动作名/图标/道具表的同步关系。
+CI 在 `tauri build` 之前先跑它，任一不符就出不了包。
 
 ### 发布新版本（GitHub Actions 云端打包）
 
-1. 三处版本号一起改：`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`（`src-tauri/Cargo.toml` 里的 `version`），并在 `CHANGELOG.md` 顶部加一节更新记录。
-2. 提交后打 tag 并推送：`git tag v0.1.0 && git push origin v0.1.0`。
-3. 推送 `v*` tag 会自动触发 `.github/workflows/release.yml`：在 windows-latest 上 `npm ci` + `tauri build`（`bundle.targets` 已收敛为 `["nsis"]`，只产 NSIS 安装包），由 `tauri-action` 创建 **Release 草稿**并上传 `.exe` 产物；人工确认后再在 Releases 页发布。也可在 Actions 页手动 `workflow_dispatch` 触发。
+1. 三处版本号一起改：`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`，并在 `CHANGELOG.md` 顶部加一节更新记录（`package-lock.json`、`src-tauri/Cargo.lock` 里的自身版本会跟着变，一并提交）。
+2. 提交后打 tag 并推送：`git tag v0.2.0 && git push origin v0.2.0`。
+3. 推送 `v*` tag 会自动触发 `.github/workflows/release.yml`：在 windows-latest 上 `npm ci` → `npm run test`（自测不过直接失败）→ `tauri build`（`bundle.targets` 已收敛为 `["nsis"]`，只产 NSIS 安装包），由 `tauri-action@v1` 创建 **Release 草稿**并上传 `.exe` 产物；人工确认后再在 Releases 页发布。也可在 Actions 页手动 `workflow_dispatch` 触发。
 
 ## 功能速览
 
@@ -142,7 +180,7 @@ npm run tauri build -- --nsis  # Windows 仅打 NSIS 安装包
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 左键单击       | 随机反应动作 + 气泡文字；800ms 内连点 3 次触发"被戳晕"彩蛋                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | 左键双击       | 开心动画                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| 左键拖拽       | 移动窗口，松开后保存坐标；快速甩动会触发回弹挤压；靠近屏幕边缘/角落则贴边探头（见上文）                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 左键拖拽       | 移动窗口，松开后保存坐标；快速甩动会触发回弹挤压；**贴边按窗口位置判定、不必等松手**（拖到位停手 400ms 即吸附，按住往屏内拖离又当场脱附回正；拖拽中只切姿态不抢窗口位置，避免与系统拖拽对拉导致闪烁，见上文）                                                                                                                                                                                                                                                                                                                                                      |
 | 点击贴边的宠物 | 从边缘完整滑回                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 右键菜单       | 喂食（30 秒内投喂 4 次触发"吃撑了"彩蛋，脚边摆出蜂蜜罐）/ 玩耍（羽毛球对拉，朝鼠标所在方向回球）/ 说话 / 睡觉 / 动作演示（见下文）/ 设置 / 隐藏 / 退出                                                                                                                                                                                                                                                                                                                                                                                                             |
 | 托盘菜单       | 显示/隐藏宠物、暂停/恢复动画、打开设置、退出                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
