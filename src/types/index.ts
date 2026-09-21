@@ -28,7 +28,7 @@ export interface PetSettings {
   petSkin: PetSkin;
   /** 闲置动作模式 */
   idleMode: IdleMode;
-  /** 宠物窗口边长（逻辑像素） */
+  /** 宠物可见尺寸（逻辑像素；透明窗口实际大小 = 该值 × WINDOW_PAD） */
   petSize: number;
   /** 是否始终置顶 */
   alwaysOnTop: boolean;
@@ -44,6 +44,8 @@ export interface PetSettings {
   breakReminderEnabled: boolean;
   /** 连续使用电脑多少分钟后提醒休息 */
   breakAfterMin: number;
+  /** 性能模式：关闭绒毛滤镜等重效果、停用四肢微动画，降低常驻功耗 */
+  performanceMode: boolean;
 }
 
 /** 宠物动画状态（idle 为基础态，其余为互动触发的临时动作） */

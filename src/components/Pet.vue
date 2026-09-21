@@ -19,6 +19,8 @@ let clickTimer: number | null = null;
 
 const isSleeping = computed(() => store.displayAnimation === "sleep");
 const isEating = computed(() => store.displayAnimation === "eat");
+/** 性能模式：去掉 feTurbulence 毛边滤镜等常驻 GPU 开销较大的效果 */
+const perfLite = computed(() => store.settings.performanceMode);
 
 function onPointerDown(e: PointerEvent): void {
   if (e.button !== 0) return;
@@ -94,6 +96,11 @@ onUnmounted(() => {
 <template>
   <div
     class="pet-wrap"
+    :class="{
+      'perf-lite': store.settings.performanceMode,
+      'fling-left': store.flingDir === 'left',
+      'fling-right': store.flingDir === 'right',
+    }"
     title="点击互动（连点有彩蛋），拖拽移动，右键菜单"
     @contextmenu="onContextMenu"
     @pointerdown="onPointerDown"
@@ -110,7 +117,11 @@ onUnmounted(() => {
           : '',
         `skin-${store.settings.petSkin}`,
       ]"
-      :style="{ '--speed': store.settings.animationSpeed }"
+      :style="{
+        '--speed': store.settings.animationSpeed,
+        '--look-x': store.look.x,
+        '--look-y': store.look.y,
+      }"
     >
       <!-- 毛绒小熊：渐变绒毛 + 毛绒滤镜质感，站立泰迪造型（用户提供设计稿） -->
       <svg
@@ -150,7 +161,7 @@ onUnmounted(() => {
         <!-- 底部影子 -->
         <ellipse cx="100" cy="202" rx="66" ry="11" fill="#000000" opacity="0.18" filter="url(#blur)" />
 
-        <g filter="url(#fuzzy)">
+        <g :filter="perfLite ? undefined : 'url(#fuzzy)'">
           <!-- 腿（纯棕色站立，偶尔交换重心） -->
           <g class="leg-l">
             <rect x="58" y="146" width="34" height="60" rx="17" fill="url(#furGrad)" />

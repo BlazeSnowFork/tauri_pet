@@ -1,6 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { currentMonitor, getCurrentWindow, PhysicalPosition } from "@tauri-apps/api/window";
+import {
+  availableMonitors,
+  cursorPosition,
+  currentMonitor,
+  getCurrentWindow,
+  PhysicalPosition,
+} from "@tauri-apps/api/window";
 import { disable, enable } from "@tauri-apps/plugin-autostart";
 import {
   isPermissionGranted,
@@ -9,6 +15,21 @@ import {
 } from "@tauri-apps/plugin-notification";
 import { load, type Store } from "@tauri-apps/plugin-store";
 import { defineStore } from "pinia";
+
+import {
+  clampIntoWork,
+  computeGaps,
+  detectCorner,
+  nearestEdge,
+  pickMonitor,
+  revealTarget,
+  shouldSnap,
+  snapTarget,
+  type EdgeRatios,
+  type Point,
+  type Size,
+} from "@/logic/edge";
+import { mergeSettings } from "@/logic/settings";
 
 import type {
   IdleVariant,
@@ -78,6 +99,14 @@ const QUIET_IDLE_VARIANTS: IdleVariant[] = ["bob", "lean", "sway", "nod", "look"
 const COMBO_CLICKS = 3;
 /** 判定连点的相邻点击间隔（毫秒） */
 const COMBO_WINDOW_MS = 800;
+/** 视线跟随：轮询全局鼠标位置的周期（毫秒）与响应半径（逻辑像素） */
+const LOOK_TICK_MS = 220;
+const LOOK_RADIUS_PX = 260;
+/** 甩动判定：取样窗口（毫秒）与视为"甩"的水平速度阈值（物理像素/毫秒） */
+const FLING_SAMPLE_WINDOW_MS = 250;
+const FLING_SPEED_PX_MS = 1.0;
+/** 甩动回弹动画的持续时长（毫秒），与 pet.css 的 fling-squash 时长一致 */
+const FLING_ANIM_MS = 620;
 /** 30 秒内投喂达到次数上限会触发"吃撑了"反应 */
 const FEED_BURST_WINDOW_MS = 30_000;
 const FEED_BURST_LIMIT = 4;
@@ -93,6 +122,16 @@ export const DEFAULT_SETTINGS: PetSettings = {
   timeReportEnabled: true,
   breakReminderEnabled: true,
   breakAfterMin: 45,
+  performanceMode: false,
+};
+
+/** 传给 logic/edge.ts 的各边露出比例（像素换算见 edge.ts 顶部注释） */
+const EDGE_RATIOS: EdgeRatios = {
+  left: EDGE_VISIBLE_RATIO,
+  right: EDGE_VISIBLE_RATIO,
+  top: EDGE_TOP_VISIBLE_RATIO,
+  bottom: EDGE_BOTTOM_VISIBLE_RATIO,
+  corner: CORNER_VISIBLE_RATIO,
 };
 
 const CLICK_PHRASES = [
@@ -179,6 +218,10 @@ let dragEndTimer: number | null = null;
 let idleTimer: number | null = null;
 let proactiveTimer: number | null = null;
 let healthTimer: number | null = null;
+let lookTimer: number | null = null;
+let flingTimer: number | null = null;
+/** 拖拽期间最近的若干窗口位置采样（物理像素），用于甩动速度判定 */
+let dragSamples: { x: number; y: number; t: number }[] = [];
 /** 连点判定 */
 let lastClickAt = 0;
 let clickCombo = 0;
@@ -209,6 +252,10 @@ export const usePetStore = defineStore("pet", {
     dragActive: false,
     /** 当前闲置动作变体（随机模式下定时轮换） */
     idleVariant: "bob" as IdleVariant,
+    /** 视线跟随：归一化到 -1..1 的注视偏移，驱动 .eyes 的 --look-x/--look-y */
+    look: { x: 0, y: 0 },
+    /** 甩动回弹方向（一次性动画，播完自动清空） */
+    flingDir: null as "left" | "right" | null,
     ready: false,
   }),
 
@@ -231,7 +278,7 @@ export const usePetStore = defineStore("pet", {
       db = await load(STORE_FILE, { autoSave: true });
 
       const savedSettings = await db.get<Partial<PetSettings>>(SETTINGS_KEY);
-      if (savedSettings) this.settings = { ...DEFAULT_SETTINGS, ...savedSettings };
+      this.settings = mergeSettings(DEFAULT_SETTINGS, savedSettings);
       const savedPos = await db.get<WindowPosition | null>(WINDOW_POS_KEY);
 
       const win = getCurrentWindow();
@@ -267,8 +314,18 @@ export const usePetStore = defineStore("pet", {
           void this.applySettings(event.payload);
         }),
         await win.onMoved(({ payload }) => {
+          this.sampleDrag({ x: payload.x, y: payload.y });
           this.scheduleSaveWindowPos({ x: payload.x, y: payload.y });
           this.noteWindowMoved();
+        }),
+        await win.onFocusChanged(({ payload: focused }) => {
+          // 托盘"显示宠物"不会通知前端 JS；窗口重新获得焦点时把定时器拉起来
+          // （start* 系列都是幂等的：先清旧定时器再排新的）
+          if (focused) {
+            this.startIdleRotation();
+            this.startProactive();
+            this.startLook();
+          }
         }),
         await win.onCloseRequested(async (event) => {
           // 点关闭按钮时隐藏到托盘而不是退出
@@ -281,6 +338,7 @@ export const usePetStore = defineStore("pet", {
       this.startIdleRotation();
       this.startProactive();
       this.startHealthTick();
+      this.startLook();
       void this.ensureNotificationPermission();
 
       this.ready = true;
@@ -402,6 +460,95 @@ export const usePetStore = defineStore("pet", {
           "盯屏太久啦，起来倒杯水、远眺一分钟~",
         );
       }
+    },
+
+    // ------------------------------------------------------------------
+    // 视线跟随 / 甩动回弹
+    // ------------------------------------------------------------------
+    /** 启动视线跟随轮询（幂等） */
+    startLook(): void {
+      if (lookTimer !== null) clearInterval(lookTimer);
+      lookTimer = window.setInterval(() => {
+        void this.updateLook();
+      }, LOOK_TICK_MS);
+    },
+
+    /** 轮询全局鼠标位置，换算成 -1..1 的注视偏移驱动 .eyes（睡熟/暂停时保持原位） */
+    async updateLook(): Promise<void> {
+      if (document.hidden || this.sleeping || this.paused) return;
+      try {
+        const win = getCurrentWindow();
+        const [cursor, pos, size, scale] = await Promise.all([
+          cursorPosition(),
+          win.outerPosition(),
+          win.outerSize(),
+          win.scaleFactor(),
+        ]);
+        const rx = LOOK_RADIUS_PX * scale;
+        const ry = LOOK_RADIUS_PX * scale * 0.8;
+        const dx = cursor.x - (pos.x + size.width / 2);
+        const dy = cursor.y - (pos.y + size.height / 2);
+        this.look = {
+          x: Math.max(-1, Math.min(1, dx / rx)),
+          y: Math.max(-1, Math.min(1, dy / ry)),
+        };
+      } catch {
+        // 取不到鼠标/窗口位置时保持上一个视线方向即可
+      }
+    },
+
+    /** 记录拖拽过程中的窗口位置采样（物理像素） */
+    sampleDrag(pos: Point): void {
+      dragSamples.push({ x: pos.x, y: pos.y, t: Date.now() });
+      if (dragSamples.length > 8) dragSamples.shift();
+    },
+
+    /** 松手瞬间按最近的移动采样判定是否"甩"了出来，是则触发一次回弹动画 */
+    flingIfNeeded(): void {
+      const now = Date.now();
+      const recent = dragSamples.filter((s) => now - s.t <= FLING_SAMPLE_WINDOW_MS);
+      dragSamples = [];
+      if (recent.length < 2) return;
+      const a = recent[0];
+      const b = recent[recent.length - 1];
+      const dt = Math.max(b.t - a.t, 1);
+      const vx = (b.x - a.x) / dt;
+      if (Math.abs(vx) < FLING_SPEED_PX_MS) return;
+      this.flingDir = vx > 0 ? "right" : "left";
+      if (flingTimer !== null) clearTimeout(flingTimer);
+      flingTimer = window.setTimeout(() => {
+        flingTimer = null;
+        this.flingDir = null;
+      }, FLING_ANIM_MS);
+    },
+
+    // ------------------------------------------------------------------
+    // 定时器启停（隐藏时省电）
+    // ------------------------------------------------------------------
+    stopIdleRotation(): void {
+      if (idleTimer !== null) clearTimeout(idleTimer);
+      idleTimer = null;
+    },
+
+    stopProactive(): void {
+      if (proactiveTimer !== null) clearTimeout(proactiveTimer);
+      proactiveTimer = null;
+    },
+
+    /** 窗口隐藏时停掉所有可停的循环，显示后由焦点事件/初始化重新拉起 */
+    parkTimers(): void {
+      this.stopIdleRotation();
+      this.stopProactive();
+      if (lookTimer !== null) {
+        clearInterval(lookTimer);
+        lookTimer = null;
+      }
+      if (flingTimer !== null) {
+        clearTimeout(flingTimer);
+        flingTimer = null;
+        this.flingDir = null;
+      }
+      dragSamples = [];
     },
 
     async ensureNotificationPermission(): Promise<void> {
@@ -591,87 +738,40 @@ export const usePetStore = defineStore("pet", {
       void this.handleDragEnd();
     },
 
-    /** 拖拽结束时调用：靠近屏幕边缘则吸附并部分滑出，否则把宠物拉回屏幕内 */
+    /** 拖拽结束时调用：靠近屏幕边缘则吸附并部分滑出，否则把宠物拉回屏幕内。
+     *  几何计算全部委托给 logic/edge.ts 的纯函数（带单测）。 */
     async handleDragEnd(): Promise<void> {
       if (this.sliding) return;
       const win = getCurrentWindow();
       try {
+        this.flingIfNeeded();
+
         // 先校正窗口尺寸：Windows 的 Aero Snap（拖到边缘松手时系统贴靠/最大化）
         // 会擅自改大窗口，导致按百分比绘制的宠物被放大
         await this.ensurePetSize();
 
-        const [pos, size, monitor] = await Promise.all([
-          win.outerPosition(),
-          win.outerSize(),
-          currentMonitor(),
-        ]);
+        const [pos, size] = await Promise.all([win.outerPosition(), win.outerSize()]);
+        const monitor = await this.resolveMonitor(pos, size);
         if (!monitor) return;
 
         const work = monitor.workArea;
-        const left = work.position.x;
-        const top = work.position.y;
-        const right = left + work.size.width;
-        const bottom = top + work.size.height;
+        const scale = monitor.scaleFactor;
+        const gaps = computeGaps(pos, size, work);
+        const edge = nearestEdge(gaps);
+        const corner = detectCorner(gaps, CORNER_SNAP_TOLERANCE * scale);
+        const snapping = corner !== null || shouldSnap(gaps, edge, EDGE_SNAP_THRESHOLD * scale);
 
-        const gaps: Record<ScreenEdge, number> = {
-          left: pos.x - left,
-          right: right - (pos.x + size.width),
-          top: pos.y - top,
-          bottom: bottom - (pos.y + size.height),
-        };
-        const edge = (Object.keys(gaps) as ScreenEdge[]).reduce((a, b) =>
-          gaps[b] < gaps[a] ? b : a,
-        );
-
-        // 角落判定：横向、纵向各取离得最近的一条边，都足够近则视为卡在角落
-        const cornerTol = CORNER_SNAP_TOLERANCE * monitor.scaleFactor;
-        const horiz: "left" | "right" | null =
-          gaps.left <= cornerTol && gaps.left <= gaps.right ? "left"
-          : gaps.right <= cornerTol ? "right"
-          : null;
-        const vert: "top" | "bottom" | null =
-          gaps.top <= cornerTol && gaps.top <= gaps.bottom ? "top"
-          : gaps.bottom <= cornerTol ? "bottom"
-          : null;
-        const corner: ScreenCorner | null =
-          horiz && vert ? `${vert}-${horiz}` : null;
-
-        const edgeSnap = gaps[edge] <= EDGE_SNAP_THRESHOLD * monitor.scaleFactor;
-        if (!edgeSnap && !corner) {
+        if (!snapping) {
           // 没有贴到边缘：清除贴边状态，并把窗口收回到可用区域内，
           // 避免宠物被拖成"半截挂在屏幕外"
           this.edge = null;
           this.corner = null;
           this.edgeHidden = false;
-          const clamped = {
-            x: Math.min(Math.max(pos.x, left), right - size.width),
-            y: Math.min(Math.max(pos.y, top), bottom - size.height),
-          };
+          const clamped = clampIntoWork(pos, size, work);
           if (clamped.x !== pos.x || clamped.y !== pos.y) {
             await this.slideTo(clamped, 120);
           }
           return;
-        }
-
-        const hiddenX = Math.round(size.width * (1 - EDGE_VISIBLE_RATIO));
-        const hiddenYTop = Math.round(size.height * (1 - EDGE_TOP_VISIBLE_RATIO));
-        const hiddenYBottom = Math.round(size.height * (1 - EDGE_BOTTOM_VISIBLE_RATIO));
-        const targets: Record<ScreenEdge, { x: number; y: number }> = {
-          left: { x: left - hiddenX, y: pos.y },
-          right: { x: right - size.width + hiddenX, y: pos.y },
-          top: { x: pos.x, y: top - hiddenYTop },
-          bottom: { x: pos.x, y: bottom - size.height + hiddenYBottom },
-        };
-
-        let target = targets[edge];
-        if (corner) {
-          // 角落吸附：横向、纵向偏移叠加，且用更大的露出比例配合 45° 斜靠姿态
-          const hiddenCX = Math.round(size.width * (1 - CORNER_VISIBLE_RATIO));
-          const hiddenCY = Math.round(size.height * (1 - CORNER_VISIBLE_RATIO));
-          target = {
-            x: corner.endsWith("left") ? left - hiddenCX : right - size.width + hiddenCX,
-            y: corner.startsWith("top") ? top - hiddenCY : bottom - size.height + hiddenCY,
-          };
         }
 
         this.edge = edge;
@@ -681,9 +781,23 @@ export const usePetStore = defineStore("pet", {
         if (!QUIET_IDLE_VARIANTS.includes(this.idleVariant)) {
           this.idleVariant = "bob";
         }
-        await this.slideTo(target);
+        await this.slideTo(snapTarget({ pos, size, work, edge, corner, ratios: EDGE_RATIOS }));
       } catch (err) {
         console.warn("贴边隐藏失败:", err);
+      }
+    },
+
+    /**
+     * 选择窗口当前真正所在的显示器：跨屏拖拽松手瞬间 currentMonitor() 可能
+     * 仍指向旧屏，改用"窗口中心点命中测试"，未命中（如整窗在屏外）回退。
+     */
+    async resolveMonitor(pos: Point, size: Size) {
+      try {
+        const [monitors, current] = await Promise.all([availableMonitors(), currentMonitor()]);
+        return pickMonitor(monitors, pos, size, current);
+      } catch (err) {
+        console.warn("枚举显示器失败，回退 currentMonitor:", err);
+        return currentMonitor();
       }
     },
 
@@ -694,36 +808,11 @@ export const usePetStore = defineStore("pet", {
       const edge = this.edge;
       const corner = this.corner;
       try {
-        const [pos, size, monitor] = await Promise.all([
-          win.outerPosition(),
-          win.outerSize(),
-          currentMonitor(),
-        ]);
+        const [pos, size] = await Promise.all([win.outerPosition(), win.outerSize()]);
+        const monitor = await this.resolveMonitor(pos, size);
         if (!monitor) return;
 
-        const work = monitor.workArea;
-        const targets: Record<ScreenEdge, { x: number; y: number }> = {
-          left: { x: work.position.x, y: pos.y },
-          right: { x: work.position.x + work.size.width - size.width, y: pos.y },
-          top: { x: pos.x, y: work.position.y },
-          bottom: {
-            x: pos.x,
-            y: work.position.y + work.size.height - size.height,
-          },
-        };
-
-        let target = targets[edge];
-        if (corner) {
-          // 角落滑回：沿对角线同时收回两个方向
-          target = {
-            x: corner.endsWith("left")
-              ? work.position.x
-              : work.position.x + work.size.width - size.width,
-            y: corner.startsWith("top")
-              ? work.position.y
-              : work.position.y + work.size.height - size.height,
-          };
-        }
+        const target = revealTarget(pos, size, monitor.workArea, corner, edge);
 
         this.edge = null;
         this.corner = null;
@@ -872,6 +961,7 @@ export const usePetStore = defineStore("pet", {
     // 窗口与应用
     // ------------------------------------------------------------------
     async hidePet(): Promise<void> {
+      this.parkTimers();
       try {
         await getCurrentWindow().hide();
       } catch (err) {
@@ -918,10 +1008,13 @@ export const usePetStore = defineStore("pet", {
         idleTimer,
         proactiveTimer,
         healthTimer,
+        lookTimer,
+        flingTimer,
       ]) {
         if (timer !== null) clearTimeout(timer);
       }
       if (healthTimer !== null) clearInterval(healthTimer);
+      if (lookTimer !== null) clearInterval(lookTimer);
       bubbleTimer = null;
       animTimer = null;
       sleepTimer = null;
@@ -930,6 +1023,8 @@ export const usePetStore = defineStore("pet", {
       idleTimer = null;
       proactiveTimer = null;
       healthTimer = null;
+      lookTimer = null;
+      flingTimer = null;
     },
   },
 });

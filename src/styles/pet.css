@@ -753,6 +753,78 @@
 
 /* ----- 关键帧 ----- */
 
+/* ----- 视线跟随：Pet.vue 将 store.look 注入 --look-x/--look-y（-1..1）。
+   注意：.eyes 的 transform 被 blink 动画长期占用（动画优先级高于普通声明，
+   直接写在 .eyes 上会被覆盖），因此偏移落在瞳孔上；高光按固定光源
+   反向微移，与瞳孔产生相对分离，纯圆点眼睛也能看出左右顾盼 ----- */
+.eyes > circle {
+  transform: translate(calc(var(--look-x, 0) * 5px), calc(var(--look-y, 0) * 3.5px));
+  transition: transform 0.25s ease-out;
+}
+
+.eyes .hl {
+  transform: translate(calc(var(--look-x, 0) * -1.5px), calc(var(--look-y, 0) * -1px));
+  transition: transform 0.25s ease-out;
+}
+
+/* ----- 性能模式（设置里的"省电模式"）：
+   停用四肢/五官微动画与整身投影；毛边滤镜由 Pet.vue 条件卸载。
+   保留当前闲置动作的主体动画，宠物依旧会动 ----- */
+.perf-lite .pet {
+  filter: none;
+}
+
+.perf-lite .arm-l,
+.perf-lite .arm-r,
+.perf-lite .leg-l,
+.perf-lite .leg-r,
+.perf-lite .ears,
+.perf-lite .torso,
+.perf-lite .mouth,
+.perf-lite .nose {
+  animation: none;
+}
+
+/* ----- 快速甩动松手时的一次性挤压回弹（作用于最外层，不与任何
+   姿态/闲置动画争用同一元素的 animation 属性）----- */
+.fling-right {
+  animation: fling-squash-r 0.62s ease-out;
+}
+
+.fling-left {
+  animation: fling-squash-l 0.62s ease-out;
+}
+
+@keyframes fling-squash-r {
+  0% {
+    transform: translateX(2.5%) scale(1.04, 0.94);
+  }
+  40% {
+    transform: translateX(-1.5%) scale(0.97, 1.03);
+  }
+  70% {
+    transform: translateX(0.6%) scale(1.01, 0.99);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes fling-squash-l {
+  0% {
+    transform: translateX(-2.5%) scale(1.04, 0.94);
+  }
+  40% {
+    transform: translateX(1.5%) scale(0.97, 1.03);
+  }
+  70% {
+    transform: translateX(-0.6%) scale(1.01, 0.99);
+  }
+  100% {
+    transform: none;
+  }
+}
+
 @keyframes bob {
   0%,
   100% {

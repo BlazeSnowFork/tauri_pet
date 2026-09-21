@@ -187,6 +187,21 @@ onUnmounted(() => {
         <span class="hint left">离开电脑 5 分钟以上视为已休息，计时自动清零</span>
       </div>
 
+      <div class="row toggle-row">
+        <label for="perf-mode">省电模式（降低画质）</label>
+        <input
+          id="perf-mode"
+          v-model="form.performanceMode"
+          type="checkbox"
+          @change="pushChange"
+        />
+      </div>
+      <div class="row">
+        <span class="hint left">
+          开启后关闭绒毛滤镜与四肢微动画，仅保留主体动作，适合低功耗设备
+        </span>
+      </div>
+
       <div class="actions">
         <button type="button" class="btn primary" @click="close">完成</button>
       </div>
