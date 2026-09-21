@@ -1,0 +1,42 @@
+name: Release
+
+# 推送形如 v0.1.0 的 tag 即触发：云端构建 Windows NSIS 安装包并创建 GitHub Release 草稿
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  release-windows:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Build & draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          includeDebug: false
+          releaseDraft: true
+          prerelease: false

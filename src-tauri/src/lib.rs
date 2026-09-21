@@ -10,8 +10,8 @@ const MENU_WINDOW: &str = "pet-menu";
 const SETTINGS_WINDOW: &str = "pet-settings";
 /// 宠物主窗口标签
 const MAIN_WINDOW: &str = "main";
-/// 菜单窗口的逻辑尺寸，需与 ContextMenu.vue / ui.css 保持一致
-/// （"动作演示"页由前端临时 setSize 到 176×420，关闭时还原回此尺寸）
+/// 菜单窗口的逻辑尺寸，需与 ContextMenu.vue / tauri.conf.json 保持一致
+/// （"动作演示"页与此同尺寸，动作列表在窗口内部单列滚动，前端不再 resize）
 const MENU_SIZE: (f64, f64) = (176.0, 282.0);
 
 #[cfg(windows)]

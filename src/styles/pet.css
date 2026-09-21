@@ -964,6 +964,176 @@
   }
 }
 
+/* 拍拍小星星（pat）：与 arm-pat 同周期，随两爪交替拍打的节奏弹出又缩没 */
+.spark {
+  font-size: 16px;
+  fill: #ffc53d;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: spark-pop calc(1.3s / var(--speed)) ease-out infinite;
+}
+.spark.s2 {
+  animation-delay: calc(-0.65s / var(--speed));
+}
+.spark.s3 {
+  font-size: 12px;
+  fill: #ffde7d;
+  animation-delay: calc(-0.32s / var(--speed));
+}
+@keyframes spark-pop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  15% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  35% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  60% {
+    transform: scale(0.3) translateY(-5px);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(0);
+    opacity: 0;
+  }
+}
+
+/* 摆动弧线（wiggle）：与 idle-wiggle 同周期，左右两侧交替闪现 */
+.prop-swing .arc {
+  fill: none;
+  stroke: #b08bd8;
+  stroke-width: 3;
+  stroke-linecap: round;
+  opacity: 0;
+}
+.prop-swing .arc-l,
+.prop-swing .arc-l2 {
+  animation: arc-flash calc(1.6s / var(--speed)) ease-out infinite;
+}
+.prop-swing .arc-r,
+.prop-swing .arc-r2 {
+  animation: arc-flash calc(1.6s / var(--speed)) ease-out infinite;
+  animation-delay: calc(-0.8s / var(--speed));
+}
+.prop-swing .arc-l2,
+.prop-swing .arc-r2 {
+  stroke-width: 2.2;
+  animation-delay: calc(-0.16s / var(--speed));
+}
+.prop-swing .arc-r2 {
+  animation-delay: calc(-0.64s / var(--speed));
+}
+@keyframes arc-flash {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.9;
+  }
+  40% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ----- 地面随机漫步（anim-walk）：重心左右倒替 + 步伐起伏，朝行进方向微倾 ----- */
+
+.walk-left {
+  --walk-lean: -2.5deg;
+}
+
+.walk-right {
+  --walk-lean: 2.5deg;
+}
+
+.anim-walk {
+  animation: walk-bob calc(0.8s / var(--speed)) ease-in-out infinite;
+}
+
+@keyframes walk-bob {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0);
+  }
+  25%,
+  75% {
+    transform: translateY(-2%);
+  }
+}
+
+.anim-walk .pet-svg {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: walk-sway calc(1.6s / var(--speed)) ease-in-out infinite;
+}
+
+@keyframes walk-sway {
+  0%,
+  100% {
+    transform: rotate(calc(var(--walk-lean, 0deg) + 1.4deg));
+  }
+  50% {
+    transform: rotate(calc(var(--walk-lean, 0deg) - 1.4deg));
+  }
+}
+
+/* 两腿交替抬落（绕髋部小幅摆动），错开半拍 */
+.anim-walk .leg-l,
+.anim-walk .leg-r {
+  transform-box: fill-box;
+  transform-origin: 50% 10%;
+  animation: leg-step calc(0.8s / var(--speed)) ease-in-out infinite;
+}
+
+.anim-walk .leg-r {
+  animation-delay: calc(-0.4s / var(--speed));
+}
+
+@keyframes leg-step {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  30% {
+    transform: rotate(6deg) translateY(-2px);
+  }
+  55% {
+    transform: rotate(-2deg);
+  }
+}
+
+/* 两臂与同侧腿反相轻摆，走起来更协调 */
+.anim-walk .arm-l {
+  transform-box: fill-box;
+  transform-origin: 91% 0%;
+  animation: arm-stride calc(0.8s / var(--speed)) ease-in-out infinite;
+}
+
+.anim-walk .arm-r {
+  transform-box: fill-box;
+  transform-origin: 9% 0%;
+  animation: arm-stride calc(0.8s / var(--speed)) ease-in-out infinite reverse;
+}
+
+@keyframes arm-stride {
+  0%,
+  100% {
+    transform: rotate(3.5deg);
+  }
+  50% {
+    transform: rotate(-3.5deg);
+  }
+}
+
 /* 问号（look）：头顶张望时轻轻弹跳 */
 .prop-q {
   font-size: 26px;

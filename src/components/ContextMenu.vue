@@ -2,16 +2,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { LogicalSize } from "@tauri-apps/api/dpi";
 import { onMounted, ref } from "vue";
 
-import { IDLE_VARIANT_LABELS } from "@/logic/props";
+import { IDLE_VARIANT_ICONS, IDLE_VARIANT_LABELS } from "@/logic/props";
 import type { IdleVariant, MenuAction, MenuDemo, MenuItemDef } from "@/types";
 
-/** 主菜单与动作演示页的窗口逻辑尺寸（与 Rust MENU_SIZE / tauri.conf.json 同步） */
-const MAIN_SIZE = { w: 176, h: 282 };
-/** 演示页同宽、加高，动作列表在内部单列滚动 */
-const DEMO_SIZE = { w: 176, h: 420 };
+/** 主菜单窗口逻辑尺寸（与 Rust MENU_SIZE / tauri.conf.json 同步）；
+ * 演示页与主菜单同尺寸，靠内部单列滚动容纳全部动作，
+ * 也避免加高后在屏幕底部弹出时超出工作区（Rust 定位只按此高度夹取）。 */
 
 const items: MenuItemDef[] = [
   { key: "feed", label: "🍖 喂食" },
@@ -24,34 +22,26 @@ const items: MenuItemDef[] = [
   { key: "quit", label: "🚪 退出", danger: true },
 ];
 
-/** 演示页可选动作：全部闲置变体（沿用 IDLE_VARIANT_LABELS 的声明顺序）+ 两个道具动作 */
+/** 演示页可选动作：全部闲置变体（沿用 IDLE_VARIANT_LABELS 的声明顺序，图标见 IDLE_VARIANT_ICONS）+ 四个特殊动作 */
 const demos: { label: string; demo: MenuDemo }[] = [
   ...(Object.keys(IDLE_VARIANT_LABELS) as IdleVariant[]).map((v) => ({
-    label: IDLE_VARIANT_LABELS[v],
+    label: `${IDLE_VARIANT_ICONS[v]} ${IDLE_VARIANT_LABELS[v]}`,
     demo: { target: "idle", variant: v } as MenuDemo,
   })),
   { label: "🍯 吃蜂蜜", demo: { target: "temp", anim: "eat" } },
   { label: "🏸 打羽毛球", demo: { target: "temp", anim: "play" } },
+  { label: "🚶 地面漫步", demo: { target: "walk" } },
+  { label: "🦋 蝴蝶过境", demo: { target: "butterfly" } },
 ];
 
 const page = ref<"main" | "demo">("main");
 
-async function resizeTo(size: { w: number; h: number }): Promise<void> {
-  try {
-    await getCurrentWindow().setSize(new LogicalSize(size.w, size.h));
-  } catch (err) {
-    console.warn("调整菜单窗口尺寸失败:", err);
-  }
-}
-
-async function openDemoPage(): Promise<void> {
+function openDemoPage(): void {
   page.value = "demo";
-  await resizeTo(DEMO_SIZE);
 }
 
-async function backToMain(): Promise<void> {
+function backToMain(): void {
   page.value = "main";
-  await resizeTo(MAIN_SIZE);
 }
 
 /** 把选中的动作广播给宠物主窗口，然后关闭菜单窗口 */
@@ -93,7 +83,9 @@ onMounted(() => {
 
     <div v-else class="ctx-menu demo-menu">
       <div class="demo-head">
-        <button type="button" class="demo-back" @click="backToMain">← 返回</button>
+        <button type="button" class="demo-back" @click="backToMain">
+          ← 返回
+        </button>
         <span class="demo-title">选择动作</span>
       </div>
       <div class="demo-grid">

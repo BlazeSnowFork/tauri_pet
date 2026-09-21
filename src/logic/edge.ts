@@ -169,6 +169,21 @@ export function clampIntoWork(pos: Point, size: Size, work: Rect): Point {
 }
 
 /**
+ * 底部"脚踏实地"落位：横向同 clampIntoWork，纵向把窗口下缘允许探出工作区底部
+ * sinkRatio 比例（即 .pet 画面下方的透明衬底占窗口的份额），
+ * 使宠物画面的底缘正好压在工作区下缘线上，而不是整窗内缩导致脚悬空。
+ */
+export function standOnGround(pos: Point, size: Size, work: Rect, sinkRatio: number): Point {
+  const left = work.position.x;
+  const top = work.position.y;
+  const bottom = top + work.size.height;
+  return {
+    x: Math.min(Math.max(pos.x, left), left + work.size.width - size.width),
+    y: Math.max(top, bottom - Math.round(size.height * (1 - sinkRatio))),
+  };
+}
+
+/**
  * 多显示器：按窗口中心点选择所在显示器。
  * currentMonitor() 在跨屏拖拽的松手瞬间可能仍返回旧屏，
  * 用中心点命中测试更稳；完全落在屏外（如被任务栏挤掉）时回退 fallback。

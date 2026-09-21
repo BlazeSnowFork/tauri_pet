@@ -128,6 +128,7 @@ onUnmounted(() => {
       :class="[
         `anim-${store.displayAnimation}`,
         isIdle ? `idle-${store.idleVariant}` : '',
+        store.walking ? `walk-${store.walkDir}` : '',
         store.edgeHidden && !store.sliding && store.edge
           ? `peek-${store.corner ?? store.edge}`
           : '',
@@ -300,6 +301,19 @@ onUnmounted(() => {
         </g>
         <!-- 问号（look 道具） -->
         <text v-if="hasProp('question')" class="prop prop-q" x="162" y="36">?</text>
+        <!-- 拍拍小星星（pat 道具）：随两爪交替拍打的节奏在肚皮两侧弹出 -->
+        <g v-if="hasProp('sparkles')" class="prop prop-sparkles">
+          <text class="spark s1" x="66" y="150">✦</text>
+          <text class="spark s2" x="128" y="150">✦</text>
+          <text class="spark s3" x="98" y="172">✦</text>
+        </g>
+        <!-- 摆动弧线（wiggle 道具）：腰侧随扭动节拍左右交替闪现 -->
+        <g v-if="hasProp('swingArcs')" class="prop prop-swing">
+          <path class="arc arc-l" d="M 26 126 Q 18 134 26 142" />
+          <path class="arc arc-l2" d="M 16 122 Q 6 134 16 146" />
+          <path class="arc arc-r" d="M 174 126 Q 182 134 174 142" />
+          <path class="arc arc-r2" d="M 184 122 Q 194 134 184 146" />
+        </g>
         <!-- 蜂蜜罐（eat 道具）：双臂随 arm-hold 关键帧收拢捧罐，爪尖搭在罐沿；
              罐口有蜜汁挂滴、周期坠落（捧持姿态见 pet.css .anim-eat .arm-*） -->
         <g v-if="hasProp('jar')" class="prop prop-jar">

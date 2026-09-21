@@ -21,6 +21,8 @@ export type PropKind =
   | "notes" // 音符（dance）
   | "lightPool" // 迪斯科光圈（dance）
   | "stretchLines" // 舒展波浪线（stretch）
+  | "sparkles" // 拍拍小星星（pat）
+  | "swingArcs" // 摆动弧线（wiggle）
   | "drops" // 水珠（shake）
   | "question" // 问号（look）
   | "jar" // 蜂蜜罐（eat）
@@ -35,6 +37,8 @@ export const IDLE_PROPS: Partial<Record<IdleVariant, PropKind[]>> = {
   kick: ["ball"],
   dance: ["notes", "lightPool"],
   stretch: ["stretchLines"],
+  pat: ["sparkles"],
+  wiggle: ["swingArcs"],
   shake: ["drops"],
   look: ["question"],
 };
@@ -62,6 +66,29 @@ export const IDLE_VARIANT_LABELS: Record<IdleVariant, string> = {
 export const ANIMATION_PROPS: Partial<Record<PetAnimation, PropKind[]>> = {
   eat: ["jar"],
   play: ["racket", "shuttle"],
+};
+
+/**
+ * 闲置变体的简易图标（菜单"动作演示"列表用）。
+ * 只选 Windows 自带 emoji 的老成员（≤Emoji 12），避免字体缺字出方框；
+ * 优先挑与动作道具/形态呼应的图形。
+ */
+export const IDLE_VARIANT_ICONS: Record<IdleVariant, string> = {
+  bob: "🌊", // 起伏如波浪
+  stretch: "🙆", // 双臂上举伸懒腰
+  look: "👀", // 四处张望
+  hop: "🦘", // 弹跳
+  shake: "💦", // 甩水珠
+  lean: "📐", // 歪斜的角度
+  sway: "🎐", // 像风铃般轻晃
+  spin: "🌀", // 旋转
+  dance: "💃", // 跳舞
+  nod: "🙇", // 低头点头
+  squirm: "🐛", // 蠕虫扭动
+  wave: "👋", // 挥手
+  pat: "🥁", // 拍击如鼓
+  kick: "⚽", // 足球
+  wiggle: "〰️", // 波浪摆动
 };
 
 /** 渲染层判定道具可见性所需的动作状态快照 */

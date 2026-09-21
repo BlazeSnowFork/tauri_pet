@@ -9,6 +9,7 @@ import {
   revealTarget,
   shouldSnap,
   snapTarget,
+  standOnGround,
   type EdgeRatios,
   type Rect,
 } from "@/logic/edge";
@@ -143,5 +144,23 @@ describe("边缘/角落判定组合（回归：贴边阈值 × DPI）", () => {
     gaps.left = 900;
     expect(shouldSnap(gaps, "right", 12 * 1.5)).toBe(true);
     expect(shouldSnap(gaps, "right", 12 * 1.0)).toBe(false);
+  });
+});
+
+describe("standOnGround（底部脚踏实地落位）", () => {
+  const SINK = 0.172;
+
+  it("窗口探出工作区下缘时，画面底缘正好压在下边线上", () => {
+    // 窗口下缘超出工作区 40px：y = 1080 - 375×(1-0.172) ≈ 895
+    const p = standOnGround({ x: 500, y: 1080 - 375 + 40 }, SIZE, WORK, SINK);
+    expect(p.y).toBe(1080 - Math.round(375 * (1 - SINK)));
+    // 画面底缘（窗口内 82.8% 处）落在 1080
+    expect(p.y + Math.round(SIZE.height * (1 - SINK))).toBe(1080);
+  });
+
+  it("横向收回工作区内；纵向一律对齐踩线位（调用方保证已越界）", () => {
+    const p = standOnGround({ x: 1900, y: 900 }, SIZE, WORK, SINK);
+    expect(p.x).toBe(1920 - 375);
+    expect(p.y).toBe(1080 - Math.round(375 * (1 - SINK)));
   });
 });

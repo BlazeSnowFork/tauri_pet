@@ -134,6 +134,19 @@
   grid-template-columns: 1fr;
   gap: 4px;
   align-content: start;
+  scrollbar-width: thin;
+  scrollbar-color: #cfc5b8 transparent;
+}
+
+.demo-grid::-webkit-scrollbar {
+  width: 6px;
+}
+.demo-grid::-webkit-scrollbar-thumb {
+  background: #cfc5b8;
+  border-radius: 3px;
+}
+.demo-grid::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .demo-item {
@@ -278,7 +291,9 @@
   color: #4a3728;
   font-size: 14px;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .skin-option:hover {

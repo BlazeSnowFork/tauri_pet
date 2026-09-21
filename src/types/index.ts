@@ -48,8 +48,8 @@ export interface PetSettings {
   performanceMode: boolean;
 }
 
-/** 宠物动画状态（idle 为基础态，其余为互动触发的临时动作） */
-export type PetAnimation = "idle" | "happy" | "sleep" | "eat" | "play" | "pet";
+/** 宠物动画状态（idle 为基础态，其余为互动触发的临时动作；walk 为漫步中的移动态） */
+export type PetAnimation = "idle" | "happy" | "sleep" | "eat" | "play" | "pet" | "walk";
 
 /** 右键菜单动作 */
 export type MenuAction =
@@ -64,7 +64,9 @@ export type MenuAction =
 /** 菜单"动作演示"页里可选的单个动作 */
 export type MenuDemo =
   | { target: "idle"; variant: IdleVariant }
-  | { target: "temp"; anim: "eat" | "play" };
+  | { target: "temp"; anim: "eat" | "play" }
+  | { target: "walk" }
+  | { target: "butterfly" };
 
 /** 菜单项定义（demo 为本地翻页项，不发给主窗口） */
 export interface MenuItemDef {

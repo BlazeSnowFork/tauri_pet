@@ -25,6 +25,7 @@ import {
   revealTarget,
   shouldSnap,
   snapTarget,
+  standOnGround,
   type EdgeRatios,
   type Point,
   type Size,
@@ -67,16 +68,22 @@ const DRAG_END_DEBOUNCE_MS = 400;
 /** 吸附隐藏后仍保留可见的窗口比例 */
 const EDGE_VISIBLE_RATIO = 0.42;
 /** 上缘单独的比例：倒挂探头时吸附深度更浅，露出更多 */
-const EDGE_TOP_VISIBLE_RATIO = 0.50;
+const EDGE_TOP_VISIBLE_RATIO = 0.5;
 /** 下缘单独的比例：底部探头露出多一些，避免静坐/小动作被裁掉 */
-const EDGE_BOTTOM_VISIBLE_RATIO = 0.30;
+const EDGE_BOTTOM_VISIBLE_RATIO = 0.3;
+/**
+ * 底部落地时窗口允许探出工作区下缘的比例：等于画面下方的透明衬底份额
+ * （.pet 占窗口 65.6%、居中，衬底 (1-0.656)/2 ≈ 0.172，见 edge.ts 头注释），
+ * 让脚底"踩"在平面线上而不是悬空。
+ */
+const GROUND_SINK_RATIO = 0.172;
 /** 滑出 / 滑入动画时长（毫秒） */
 const EDGE_ANIM_MS = 200;
 /** 透明窗口相对宠物可见尺寸的放大系数：给影子、挥手、气泡等留出画外余量 */
 const WINDOW_PAD = 1.25;
 /** 随机模式下两种闲置动作之间的最小 / 最大间隔（毫秒） */
-const IDLE_SWITCH_MIN_MS = 6_000;
-const IDLE_SWITCH_MAX_MS = 13_000;
+const IDLE_SWITCH_MIN_MS = 12_000;
+const IDLE_SWITCH_MAX_MS = 24_000;
 /** 随机轮换的闲置动作池 */
 const IDLE_VARIANTS: IdleVariant[] = [
   "bob",
@@ -96,11 +103,29 @@ const IDLE_VARIANTS: IdleVariant[] = [
   "wiggle",
 ];
 /** 贴边时只轮换"专注式"小动作：幅度小、不打扰使用者，且不含旋转 */
-const QUIET_IDLE_VARIANTS: IdleVariant[] = ["bob", "lean", "sway", "nod", "look"];
+const QUIET_IDLE_VARIANTS: IdleVariant[] = [
+  "bob",
+  "lean",
+  "sway",
+  "nod",
+  "look",
+];
 /** 动作演示页选中的闲置动作被"钉住"的最长时长（毫秒），到期后恢复随机轮换 */
 const DEMO_PIN_MS = 60_000;
 /** 演示"吃蜂蜜"的动画时长（毫秒），与 feed() 保持一致 */
 const DEMO_EAT_MS = 3000;
+/** 演示循环重播时，两轮临时动画之间的间隔（毫秒） */
+const DEMO_LOOP_GAP_MS = 700;
+/** 地面漫步：调度窗口间隔（毫秒）与每次机会的放行概率 */
+const WALK_MIN_MS = 90_000;
+const WALK_MAX_MS = 200_000;
+const WALK_CHANCE = 0.55;
+/** 漫步速度（逻辑像素/秒）与单次距离范围（逻辑像素） */
+const WALK_SPEED_PX_S = 55;
+const WALK_DIST_MIN = 90;
+const WALK_DIST_MAX = 240;
+/** 窗口底缘距工作区底部不超过该值（逻辑像素）视为"站在地面"，才允许漫步 */
+const WALK_GROUND_SLACK = 40;
 /** 连续快速点击达到该次数时触发"被戳晕"彩蛋反应 */
 const COMBO_CLICKS = 3;
 /** 判定连点的相邻点击间隔（毫秒） */
@@ -116,9 +141,9 @@ const FLING_ANIM_MS = 620;
 /** 30 秒内投喂达到次数上限会触发"吃撑了"反应 */
 const FEED_BURST_WINDOW_MS = 30_000;
 const FEED_BURST_LIMIT = 4;
-/** 蝴蝶小剧本：触发窗口 4~8 分钟、每次 50% 概率，飞过全程时长 */
-const BUTTERFLY_MIN_MS = 4 * 60_000;
-const BUTTERFLY_MAX_MS = 8 * 60_000;
+/** 蝴蝶小剧本：触发窗口 6~14 分钟、每次 50% 概率，飞过全程时长 */
+const BUTTERFLY_MIN_MS = 6 * 60_000;
+const BUTTERFLY_MAX_MS = 14 * 60_000;
 const BUTTERFLY_CHANCE = 0.5;
 const BUTTERFLY_SHOW_MS = 6800;
 /** 玩耍（羽毛球）动作时长：约两个来回 */
@@ -188,6 +213,13 @@ const WOKEN_UP_PHRASES = [
 
 const WAKE_UP_PHRASES = ["睡饱啦，精神满满!", "起来活动一下~"];
 
+const WALK_PHRASES = [
+  "出去走走~",
+  "散个步消消食~",
+  "（迈着小短腿溜达中）",
+  "走两步，就两步~",
+];
+
 const TALK_PHRASES = [
   "你知道吗，发呆其实很累的",
   "盯着屏幕太久啦，看我放松一下眼睛 👀",
@@ -238,6 +270,13 @@ let butterflyEndTimer: number | null = null;
 /** 动作演示：钉住的闲置动作与到期解除定时器（钉住期间随机轮换让位） */
 let demoPinned = false;
 let demoPinTimer: number | null = null;
+/** 演示循环重播：正在循环的临时动作与下一轮定时器（null 表示未在循环） */
+let demoLoopAnim: "eat" | "play" | null = null;
+let demoLoopTimer: number | null = null;
+/** 地面漫步调度定时器 */
+let walkTimer: number | null = null;
+/** 漫步世代号：新趟次开始（含演示重触发）会让上一趟的逐帧循环自然退场 */
+let walkSeq = 0;
 /** 拖拽期间最近的若干窗口位置采样（物理像素），用于甩动速度判定 */
 let dragSamples: { x: number; y: number; t: number }[] = [];
 /** 连点判定 */
@@ -278,14 +317,19 @@ export const usePetStore = defineStore("pet", {
     playDir: "right" as "left" | "right",
     /** 蝴蝶小剧本：正在飞 + 从哪侧入场 */
     butterflySide: null as "left" | "right" | null,
+    /** 地面漫步进行中（displayAnimation 会切到 walk） */
+    walking: false,
+    /** 漫步朝向（左/右），驱动身体倾斜方向 */
+    walkDir: "right" as "left" | "right",
     ready: false,
   }),
 
   getters: {
-    /** 当前应展示的动画：临时动作 > 睡觉 > 闲置基础态 */
+    /** 当前应展示的动画：临时动作 > 睡觉 > 漫步 > 闲置基础态 */
     displayAnimation(state): PetAnimation {
       if (state.tempAnimation) return state.tempAnimation;
       if (state.sleeping) return "sleep";
+      if (state.walking) return "walk";
       return "idle";
     },
   },
@@ -351,6 +395,7 @@ export const usePetStore = defineStore("pet", {
             this.startProactive();
             this.startLook();
             this.startButterfly();
+            this.startWalkScheduler();
           }
         }),
         await win.onCloseRequested(async (event) => {
@@ -366,6 +411,7 @@ export const usePetStore = defineStore("pet", {
       this.startHealthTick();
       this.startLook();
       this.startButterfly();
+      this.startWalkScheduler();
       void this.ensureNotificationPermission();
 
       this.ready = true;
@@ -388,7 +434,8 @@ export const usePetStore = defineStore("pet", {
       }
       const schedule = (): void => {
         const wait =
-          IDLE_SWITCH_MIN_MS + Math.random() * (IDLE_SWITCH_MAX_MS - IDLE_SWITCH_MIN_MS);
+          IDLE_SWITCH_MIN_MS +
+          Math.random() * (IDLE_SWITCH_MAX_MS - IDLE_SWITCH_MIN_MS);
         idleTimer = window.setTimeout(() => {
           idleTimer = null;
           if (
@@ -412,7 +459,9 @@ export const usePetStore = defineStore("pet", {
       if (proactiveTimer !== null) clearTimeout(proactiveTimer);
       proactiveTimer = null;
       const schedule = (): void => {
-        const wait = PROACTIVE_MIN_MS + Math.random() * (PROACTIVE_MAX_MS - PROACTIVE_MIN_MS);
+        const wait =
+          PROACTIVE_MIN_MS +
+          Math.random() * (PROACTIVE_MAX_MS - PROACTIVE_MIN_MS);
         proactiveTimer = window.setTimeout(() => {
           proactiveTimer = null;
           if (
@@ -442,7 +491,7 @@ export const usePetStore = defineStore("pet", {
     },
 
     /**
-     * 蝴蝶小剧本调度：每 4~8 分钟一次机会、50% 概率放行。
+     * 蝴蝶小剧本调度：每 6~14 分钟一次机会、50% 概率放行。
      * 触发时蝴蝶从一侧飞过，宠物切到"张望"并哼一声，全程约 7 秒。
      */
     startButterfly(): void {
@@ -450,7 +499,8 @@ export const usePetStore = defineStore("pet", {
       butterflyTimer = null;
       const schedule = (): void => {
         const wait =
-          BUTTERFLY_MIN_MS + Math.random() * (BUTTERFLY_MAX_MS - BUTTERFLY_MIN_MS);
+          BUTTERFLY_MIN_MS +
+          Math.random() * (BUTTERFLY_MAX_MS - BUTTERFLY_MIN_MS);
         butterflyTimer = window.setTimeout(() => {
           butterflyTimer = null;
           if (
@@ -475,7 +525,11 @@ export const usePetStore = defineStore("pet", {
       this.butterflySide = Math.random() < 0.5 ? "left" : "right";
       if (this.settings.idleMode === "random") this.idleVariant = "look";
       this.showBubble(
-        randomFrom(["哇，是蝴蝶！🦋", "蝴蝶蝴蝶，别飞走呀~", "（盯着蝴蝶看入了迷）"]),
+        randomFrom([
+          "哇，是蝴蝶！🦋",
+          "蝴蝶蝴蝶，别飞走呀~",
+          "（盯着蝴蝶看入了迷）",
+        ]),
         4000,
       );
       if (butterflyEndTimer !== null) clearTimeout(butterflyEndTimer);
@@ -485,8 +539,117 @@ export const usePetStore = defineStore("pet", {
       }, BUTTERFLY_SHOW_MS);
     },
 
+    // ------------------------------------------------------------------
+    // 地面随机漫步：贴着屏幕底部时，偶尔小范围溜达一段
+    // ------------------------------------------------------------------
+    /** 漫步调度（幂等）：每 90~200 秒一次机会，条件齐全且掷骰通过才出门 */
+    startWalkScheduler(): void {
+      if (walkTimer !== null) clearTimeout(walkTimer);
+      walkTimer = null;
+      const schedule = (): void => {
+        const wait = WALK_MIN_MS + Math.random() * (WALK_MAX_MS - WALK_MIN_MS);
+        walkTimer = window.setTimeout(() => {
+          walkTimer = null;
+          if (
+            this.ready &&
+            !this.paused &&
+            !this.sleeping &&
+            !this.tempAnimation &&
+            !this.dragActive &&
+            !this.sliding &&
+            !this.edgeHidden &&
+            this.displayAnimation === "idle" &&
+            !demoPinned &&
+            demoLoopAnim === null &&
+            Math.random() < WALK_CHANCE
+          ) {
+            void this.walkTrip();
+          }
+          schedule();
+        }, wait);
+      };
+      schedule();
+    },
+
+    /** 停掉漫步（互动/拖拽/睡觉/隐藏窗口时调用，逐帧循环会感知并收尾） */
+    stopWalking(): void {
+      this.walking = false;
+    },
+
+    /**
+     * 走一趟：仅当窗口底缘贴近工作区底部（"站在地上"）才成行。
+     * 随机挑方向和距离，逐帧平移窗口；任何中断直接停在当前位置。
+     * forDemo=true 时豁免地面判定——不在地上就先滑落到"地面线"再出发。
+     */
+    async walkTrip(forDemo = false): Promise<void> {
+      const seq = ++walkSeq;
+      const win = getCurrentWindow();
+      try {
+        const [initial, size] = await Promise.all([
+          win.outerPosition(),
+          win.outerSize(),
+        ]);
+        const monitor = await this.resolveMonitor(initial, size);
+        if (!monitor) return;
+        const scale = monitor.scaleFactor;
+        const work = monitor.workArea;
+        const groundLine = work.position.y + work.size.height;
+        let pos = initial;
+        if (pos.y + size.height < groundLine - WALK_GROUND_SLACK * scale) {
+          if (!forDemo) return;
+          const sinkY =
+            groundLine - Math.round(size.height * (1 - GROUND_SINK_RATIO));
+          await this.slideTo({ x: pos.x, y: sinkY }, 260);
+          if (seq !== walkSeq) return;
+          pos = await win.outerPosition();
+        }
+
+        const minX = work.position.x;
+        const maxX = work.position.x + work.size.width - size.width;
+        const dist =
+          (WALK_DIST_MIN + Math.random() * (WALK_DIST_MAX - WALK_DIST_MIN)) *
+          scale;
+        let target = pos.x + (Math.random() < 0.5 ? dist : -dist);
+        target = Math.round(Math.min(maxX, Math.max(minX, target)));
+        // 两侧空间都太窄就放弃这次机会
+        if (Math.abs(target - pos.x) < 40 * scale) return;
+
+        this.walking = true;
+        this.walkDir = target >= pos.x ? "right" : "left";
+        if (Math.random() < 0.35)
+          this.showBubble(randomFrom(WALK_PHRASES), 3000);
+
+        const pxPerFrame = (WALK_SPEED_PX_S * scale) / (1000 / 16);
+        const frames = Math.max(
+          1,
+          Math.round(Math.abs(target - pos.x) / pxPerFrame),
+        );
+        for (let i = 1; i <= frames; i += 1) {
+          if (
+            seq !== walkSeq ||
+            !this.walking ||
+            this.tempAnimation ||
+            this.sleeping ||
+            this.dragActive
+          ) {
+            break;
+          }
+          const x = Math.round(pos.x + (target - pos.x) * (i / frames));
+          await win.setPosition(new PhysicalPosition(x, pos.y));
+          if (i < frames) {
+            await new Promise((resolve) => setTimeout(resolve, 16));
+          }
+        }
+      } catch (err) {
+        console.warn("漫步失败:", err);
+      } finally {
+        if (seq === walkSeq) this.walking = false;
+      }
+    },
+
     /** 整点报时 + 连续用机休息提醒的巡检定时器 */
-    startHealthTick(): void {      if (healthTimer !== null) clearInterval(healthTimer);
+    startHealthTick(): void {
+      if (healthTimer !== null) clearInterval(healthTimer);
       healthTimer = window.setInterval(() => {
         void this.healthTick();
       }, HEALTH_TICK_MS);
@@ -577,7 +740,9 @@ export const usePetStore = defineStore("pet", {
     /** 松手瞬间按最近的移动采样判定是否"甩"了出来，是则触发一次回弹动画 */
     flingIfNeeded(): void {
       const now = Date.now();
-      const recent = dragSamples.filter((s) => now - s.t <= FLING_SAMPLE_WINDOW_MS);
+      const recent = dragSamples.filter(
+        (s) => now - s.t <= FLING_SAMPLE_WINDOW_MS,
+      );
       dragSamples = [];
       if (recent.length < 2) return;
       const a = recent[0];
@@ -607,25 +772,42 @@ export const usePetStore = defineStore("pet", {
     },
 
     /**
-     * 动作演示页选中单个动作：立刻演示指定的闲置动作或吃蜂蜜/打羽毛球。
-     * 闲置动作会被"钉住"（随机轮换让位），便于反复观察道具效果；
-     * 到 DEMO_PIN_MS、贴边、再次选中其它动作或隐藏窗口时解除。
+     * 动作演示页选中单个动作：立刻演示指定的闲置动作、吃蜂蜜/打羽毛球，
+     * 或直接触发地面漫步/蝴蝶过境剧本。
+     * 闲置动作会被"钉住"（随机轮换让位），临时动作则循环重播，
+     * 便于反复观察道具效果；到 DEMO_PIN_MS、贴边、再次互动或隐藏窗口时解除。
      */
     playDemo(demo: MenuDemo): void {
       if (this.sleeping) this.wakeUp(false);
       this.clearDemoPin();
       if (demo.target === "temp") {
         const label = demo.anim === "eat" ? "吃蜂蜜" : "打羽毛球";
-        this.showTempAnimation(demo.anim, demo.anim === "eat" ? DEMO_EAT_MS : PLAY_ANIM_MS);
-        this.showBubble(`🎭 ${label}`);
+        demoLoopAnim = demo.anim;
+        this.demoTempTick();
+        this.showBubble(`🎭 ${label}（循环演示中）`, 4000);
         return;
       }
-      // 清掉进行中的临时动画，让位给要演示的闲置动作
-      if (animTimer !== null) {
-        clearTimeout(animTimer);
-        animTimer = null;
+      if (
+        demo.target === "walk" ||
+        demo.target === "butterfly" ||
+        demo.target === "idle"
+      ) {
+        // 清掉进行中的临时动画，让位给要演示的动作
+        if (animTimer !== null) {
+          clearTimeout(animTimer);
+          animTimer = null;
+        }
+        this.tempAnimation = null;
       }
-      this.tempAnimation = null;
+      if (demo.target === "walk") {
+        this.showBubble("🎭 地面漫步");
+        void this.walkTrip(true);
+        return;
+      }
+      if (demo.target === "butterfly") {
+        this.spawnButterfly();
+        return;
+      }
       this.idleVariant = demo.variant;
       demoPinned = true;
       demoPinTimer = window.setTimeout(() => {
@@ -635,13 +817,46 @@ export const usePetStore = defineStore("pet", {
       this.showBubble(`🎭 ${IDLE_VARIANT_LABELS[demo.variant]}`);
     },
 
-    /** 解除"钉住"的演示动作，把轮换权交还给随机调度 */
+    /**
+     * 演示循环的一拍：播一轮指定的临时动作，隔一小段再排下一轮。
+     * 被其它互动顶替、睡觉/暂停/贴边时自动退出循环。
+     */
+    demoTempTick(): void {
+      demoLoopTimer = null;
+      const anim = demoLoopAnim;
+      const overridden =
+        this.tempAnimation !== null && this.tempAnimation !== anim;
+      if (
+        !anim ||
+        overridden ||
+        this.paused ||
+        this.sleeping ||
+        this.edgeHidden
+      ) {
+        this.clearDemoPin();
+        return;
+      }
+      this.showTempAnimation(anim, anim === "eat" ? DEMO_EAT_MS : PLAY_ANIM_MS);
+      const roundMs =
+        (anim === "eat" ? DEMO_EAT_MS : PLAY_ANIM_MS) + DEMO_LOOP_GAP_MS;
+      demoLoopTimer = window.setTimeout(
+        () => this.demoTempTick(),
+        roundMs / Math.max(this.settings.animationSpeed, 0.1),
+      );
+    },
+
+    /** 解除"钉住"的演示动作与循环重播，把调度权交还常规逻辑 */
     clearDemoPin(): void {
       if (demoPinTimer !== null) {
         clearTimeout(demoPinTimer);
         demoPinTimer = null;
       }
       demoPinned = false;
+      if (demoLoopTimer !== null) {
+        clearTimeout(demoLoopTimer);
+        demoLoopTimer = null;
+      }
+      demoLoopAnim = null;
     },
 
     /** 窗口隐藏时停掉所有可停的循环，显示后由焦点事件/初始化重新拉起 */
@@ -666,6 +881,11 @@ export const usePetStore = defineStore("pet", {
         butterflyEndTimer = null;
       }
       this.clearDemoPin();
+      if (walkTimer !== null) {
+        clearTimeout(walkTimer);
+        walkTimer = null;
+      }
+      this.stopWalking();
       this.butterflySide = null;
       dragSamples = [];
     },
@@ -758,7 +978,10 @@ export const usePetStore = defineStore("pet", {
         return;
       }
       this.showTempAnimation("pet", 1200);
-      this.showBubble(randomFrom([...TALK_PHRASES, ...PROACTIVE_PHRASES]), 4000);
+      this.showBubble(
+        randomFrom([...TALK_PHRASES, ...PROACTIVE_PHRASES]),
+        4000,
+      );
     },
 
     /** 睡觉：持续到点自然醒，期间可被点击叫醒 */
@@ -816,6 +1039,8 @@ export const usePetStore = defineStore("pet", {
 
     showTempAnimation(anim: PetAnimation, ms: number): void {
       if (animTimer !== null) clearTimeout(animTimer);
+      // 任何临时互动都先打断漫步（walk 自身除外，防御性判断）
+      if (anim !== "walk") this.stopWalking();
       if (anim === "play") {
         // 球往哪边打：取当前视线水平方向，让羽毛球朝鼠标那侧飞
         this.playDir = this.look.x < 0 ? "left" : "right";
@@ -832,6 +1057,7 @@ export const usePetStore = defineStore("pet", {
     // ------------------------------------------------------------------
     /** 用户开始拖拽窗口 */
     beginDrag(): void {
+      this.stopWalking();
       this.dragActive = true;
     },
 
@@ -873,7 +1099,10 @@ export const usePetStore = defineStore("pet", {
         // 会擅自改大窗口，导致按百分比绘制的宠物被放大
         await this.ensurePetSize();
 
-        const [pos, size] = await Promise.all([win.outerPosition(), win.outerSize()]);
+        const [pos, size] = await Promise.all([
+          win.outerPosition(),
+          win.outerSize(),
+        ]);
         const monitor = await this.resolveMonitor(pos, size);
         if (!monitor) return;
 
@@ -882,7 +1111,12 @@ export const usePetStore = defineStore("pet", {
         const gaps = computeGaps(pos, size, work);
         const edge = nearestEdge(gaps);
         const corner = detectCorner(gaps, CORNER_SNAP_TOLERANCE * scale);
-        const snapping = corner !== null || shouldSnap(gaps, edge, EDGE_SNAP_THRESHOLD * scale);
+        // 底边单侧不吸附：放在底部就是"站在地面"，保留给地面漫步；
+        // 想触发底部探头姿态请拖到左下/右下角（角落吸附仍有效）
+        const snapping =
+          corner !== null ||
+          (edge !== "bottom" &&
+            shouldSnap(gaps, edge, EDGE_SNAP_THRESHOLD * scale));
 
         if (!snapping) {
           // 没有贴到边缘：清除贴边状态，并把窗口收回到可用区域内，
@@ -890,7 +1124,12 @@ export const usePetStore = defineStore("pet", {
           this.edge = null;
           this.corner = null;
           this.edgeHidden = false;
-          const clamped = clampIntoWork(pos, size, work);
+          // 底部松手 = 站在地面：窗口下缘探出透明衬底的量，脚踩工作区底线；
+          // 其余方向仍整窗收回可用区
+          const clamped =
+            edge === "bottom" && gaps.bottom < 0
+              ? standOnGround(pos, size, work, GROUND_SINK_RATIO)
+              : clampIntoWork(pos, size, work);
           if (clamped.x !== pos.x || clamped.y !== pos.y) {
             await this.slideTo(clamped, 120);
           }
@@ -905,7 +1144,9 @@ export const usePetStore = defineStore("pet", {
         if (!QUIET_IDLE_VARIANTS.includes(this.idleVariant)) {
           this.idleVariant = "bob";
         }
-        await this.slideTo(snapTarget({ pos, size, work, edge, corner, ratios: EDGE_RATIOS }));
+        await this.slideTo(
+          snapTarget({ pos, size, work, edge, corner, ratios: EDGE_RATIOS }),
+        );
       } catch (err) {
         console.warn("贴边隐藏失败:", err);
       }
@@ -917,7 +1158,10 @@ export const usePetStore = defineStore("pet", {
      */
     async resolveMonitor(pos: Point, size: Size) {
       try {
-        const [monitors, current] = await Promise.all([availableMonitors(), currentMonitor()]);
+        const [monitors, current] = await Promise.all([
+          availableMonitors(),
+          currentMonitor(),
+        ]);
         return pickMonitor(monitors, pos, size, current);
       } catch (err) {
         console.warn("枚举显示器失败，回退 currentMonitor:", err);
@@ -932,7 +1176,10 @@ export const usePetStore = defineStore("pet", {
       const edge = this.edge;
       const corner = this.corner;
       try {
-        const [pos, size] = await Promise.all([win.outerPosition(), win.outerSize()]);
+        const [pos, size] = await Promise.all([
+          win.outerPosition(),
+          win.outerSize(),
+        ]);
         const monitor = await this.resolveMonitor(pos, size);
         if (!monitor) return;
 
@@ -949,7 +1196,10 @@ export const usePetStore = defineStore("pet", {
     },
 
     /** 逐帧移动窗口，模拟滑出/滑入动画 */
-    async slideTo(target: { x: number; y: number }, ms = EDGE_ANIM_MS): Promise<void> {
+    async slideTo(
+      target: { x: number; y: number },
+      ms = EDGE_ANIM_MS,
+    ): Promise<void> {
       const win = getCurrentWindow();
       this.sliding = true;
       try {
@@ -1137,6 +1387,8 @@ export const usePetStore = defineStore("pet", {
         butterflyTimer,
         butterflyEndTimer,
         demoPinTimer,
+        demoLoopTimer,
+        walkTimer,
       ]) {
         if (timer !== null) clearTimeout(timer);
       }
@@ -1154,6 +1406,9 @@ export const usePetStore = defineStore("pet", {
       flingTimer = null;
       demoPinned = false;
       demoPinTimer = null;
+      demoLoopTimer = null;
+      demoLoopAnim = null;
+      walkTimer = null;
     },
   },
 });
