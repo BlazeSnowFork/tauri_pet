@@ -755,16 +755,36 @@
 
 /* ----- 视线跟随：Pet.vue 将 store.look 注入 --look-x/--look-y（-1..1）。
    注意：.eyes 的 transform 被 blink 动画长期占用（动画优先级高于普通声明，
-   直接写在 .eyes 上会被覆盖），因此偏移落在瞳孔上；高光按固定光源
-   反向微移，与瞳孔产生相对分离，纯圆点眼睛也能看出左右顾盼 ----- */
+   直接写在 .eyes 上会被覆盖），因此偏移落在瞳孔上。三层视差：
+   瞳孔最快最大、高光"眼白反光"以约七成幅度同向随动（像黏在湿润眼球上
+   一起瞟过去）、头再慢半拍跟进，比只动瞳孔生动得多。
+   小熊皮肤另带头部联动：毛绒滤镜层的 .head-tilt 与面部层的 .face-tilt
+   本是同一颗头的上下两半，必须共用完全相同的变换（view-box 坐标系下
+   取同一旋转原点）才不会把五官拧离原位；头的转动比瞳孔慢半拍，
+   先"眼神瞟过去、头跟上来"，比只动瞳孔生动得多 ----- */
 .eyes > circle {
-  transform: translate(calc(var(--look-x, 0) * 5px), calc(var(--look-y, 0) * 3.5px));
-  transition: transform 0.25s ease-out;
+  transform: translate(
+    calc(var(--look-x, 0) * 5.5px),
+    calc(var(--look-y, 0) * 4px)
+  );
+  transition: transform 0.18s ease-out;
 }
 
 .eyes .hl {
-  transform: translate(calc(var(--look-x, 0) * -1.5px), calc(var(--look-y, 0) * -1px));
-  transition: transform 0.25s ease-out;
+  transform: translate(
+    calc(var(--look-x, 0) * 3.8px),
+    calc(var(--look-y, 0) * 2.8px)
+  );
+  transition: transform 0.22s ease-out;
+}
+
+.head-tilt,
+.face-tilt {
+  transform-box: view-box;
+  transform-origin: 100px 120px; /* 颈部枢轴（头颅下缘与脖颈交接处） */
+  transform: rotate(calc(var(--look-x, 0) * 3.2deg))
+    translate(calc(var(--look-x, 0) * 2px), calc(var(--look-y, 0) * 1.6px));
+  transition: transform 0.38s ease-out;
 }
 
 /* ============================================================

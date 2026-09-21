@@ -989,6 +989,8 @@ export const usePetStore = defineStore("pet", {
       if (this.sleeping) return;
       this.sleeping = true;
       this.tempAnimation = null;
+      // 睡姿不该歪着头：视线归中（updateLook 睡眠期间不再更新）
+      this.look = { x: 0, y: 0 };
       if (sleepTimer !== null) clearTimeout(sleepTimer);
       this.showBubble(randomFrom(SLEEP_START_PHRASES), 4000);
       sleepTimer = window.setTimeout(() => {
