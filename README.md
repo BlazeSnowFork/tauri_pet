@@ -124,7 +124,7 @@ npm run tauri build            # 发布构建，产物在 src-tauri/target/relea
 npm run tauri build -- --nsis  # Windows 仅打 NSIS 安装包
 ```
 
-免安装分发：`target/release/tauri-desktop-pet.exe` 动态链接 WebView2，单拷 exe 会报"找不到 WebView2Loader.dll"，需连同同目录的 `WebView2Loader.dll` 一起放在同一文件夹（NSIS 安装包里已自带，无此问题）。
+免安装分发：`target/release/tauri-desktop-pet.exe` 动态链接 WebView2，单拷 exe 会报"找不到 WebView2Loader.dll"，需连同同目录的 `WebView2Loader.dll` 一起放在同一文件夹。NSIS 安装包同样不会自动收集该 dll，已把它入库为 `src-tauri/WebView2Loader.dll` 并在 `bundle.resources` 声明，随安装器一并释放到安装目录——升级 tauri 依赖时记得同步替换这个 dll。
 
 其他脚本：`npm run dev`（仅前端）、`npm run build`（类型检查 + 打包）、`npm run typecheck`、`npm run test`（Vitest 单测，覆盖 `src/logic/` 纯函数）、`npm run icons`。
 
