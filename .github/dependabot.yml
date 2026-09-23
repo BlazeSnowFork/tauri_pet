@@ -1,0 +1,88 @@
+# Dependabot 依赖更新配置
+# 文档: https://docs.github.com/code-security/dependabot/dependabot-version-updates
+version: 2
+updates:
+# npm 依赖（根目录 package.json）
+- package-ecosystem: "npm"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "monday"
+    time: "09:00"
+    timezone: "Asia/Shanghai"
+  open-pull-requests-limit: 10
+  labels:
+  - "dependencies"
+  - "javascript"
+  groups:
+    # 将 Tauri 相关依赖合并为一个 PR
+    tauri:
+      patterns:
+      - "@tauri-apps/*"
+    # Vue 生态合并为一个 PR
+    vue:
+      patterns:
+      - "vue"
+      - "pinia"
+      - "@vitejs/plugin-vue"
+      - "vue-tsc"
+    # 测试/构建工具合并为一个 PR
+    dev-tooling:
+      patterns:
+      - "vite"
+      - "vitest"
+      - "typescript"
+      - "@types/*"
+  commit-message:
+    prefix: "chore"
+    include: "scope"
+
+# Cargo 依赖（src-tauri/Cargo.toml）
+- package-ecosystem: "cargo"
+  directory: "/src-tauri"
+  schedule:
+    interval: "weekly"
+    day: "monday"
+    time: "09:00"
+    timezone: "Asia/Shanghai"
+  open-pull-requests-limit: 10
+  labels:
+  - "dependencies"
+  - "rust"
+  groups:
+    # Tauri 相关 crate 合并为一个 PR
+    tauri:
+      patterns:
+      - "tauri*"
+    # 其余 crate 按 minor/patch 合并，major 单独提 PR
+    rust-deps:
+      patterns:
+      - "*"
+      exclude-patterns:
+      - "tauri*"
+      update-types:
+      - "minor"
+      - "patch"
+  commit-message:
+    prefix: "chore"
+    include: "scope"
+
+# GitHub Actions 工作流中的 actions 版本
+- package-ecosystem: "github-actions"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "monday"
+    time: "09:00"
+    timezone: "Asia/Shanghai"
+  open-pull-requests-limit: 5
+  labels:
+  - "dependencies"
+  - "ci"
+  groups:
+    actions:
+      patterns:
+      - "*"
+  commit-message:
+    prefix: "chore"
+    include: "scope"
